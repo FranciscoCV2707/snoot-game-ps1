@@ -1,5 +1,15 @@
 # Bitácora
 
+## 2026-10-08 - Fase 2 (decisiones y especificacion)
+Hecho:
+- Prototipo de resolucion/formato (`tools/images/proto_compare.py`), prueba XA + CD (`experiments/xa_test`), interleaver XA, auditoria de audio.
+- Documentos: `decisiones.md` (D1-D11), `bytecode.md` v1, `presupuesto-audio.md`, `presupuesto-memoria.md`.
+- Decisiones del usuario: 320x240 con 8 bits, musica mono, video como animacion por fotogramas.
+
+Pendiente:
+- Revision del usuario.
+- Fase 3.
+
 ## 2026-10-08 - Fase 1 (auditoria)
 Hecho:
 - `tools/audit/inventario.py` genera `docs/auditoria.md`, `build/audit/inventario.json`, `python_blocks.txt` y los grafos SVG.

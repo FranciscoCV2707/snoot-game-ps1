@@ -2,49 +2,37 @@
 
 Ultima actualizacion: 2026-10-08
 
-## Fase actual: 2 - Decisiones tecnicas y especificacion (por empezar)
+## Fase actual: 2 - Decisiones tecnicas y especificacion (terminada, pendiente de tu revision)
 
 ## Hecho
 ### Fase 0 - Entorno (terminada)
 - [x] Python 3.12, Graphviz, git, cmake, ninja, ffmpeg instalados
 - [x] PSn00bSDK, mkpsxiso, psxavenc funcionando
 - [x] Repositorio C:\dev\snoot-ps1 con estructura, CLAUDE.md, PLAN.md, .gitattributes, .gitignore
-- [x] venv Python 3.12 con pillow, numpy, pytest
+- [x] venv Python 3.12 con pillow, numpy, pytest, lz4
 - [x] tools/check_env.py: 17 verificaciones en OK
 - [x] Juego copiado a original/
 - [x] Exclusion de Defender para C:\dev
 - [x] Hola mundo PS1 verificado en DuckStation y PCSX-Redux (BIOS real)
 
-### Fase 1 - Auditoria (terminada, pendiente de tu revision)
-- [x] tools/audit/inventario.py (instrucciones, personajes, variables, persistent, Python, screens)
-- [x] 0 instrucciones de Ren'Py desconocidas
-- [x] Cobertura de traduccion tl/es (14,694 bloques, 0 vacios) y caracteres usados
-- [x] Inventario de imagenes (589) y audio (120 min)
-- [x] Grafo de la historia (build/audit/grafo_historia.svg) y de etiquetas
-- [x] Material picante (persistent.lewd), galeria (203), capitulos extra, finales, version Ren'Py 8.3.7, licencia
-- [x] Python clasificado: 190 automatico, 28 a mano, 22 descartable, 5 revisar
-- [x] docs/auditoria.md + docs/auditoria_manual.md + build/audit/inventario.json
-- [x] 10 tests pasando
-- [x] Resumen de partes dificiles (al final de docs/auditoria.md)
+### Fase 1 - Auditoria (terminada)
+- [x] tools/audit/inventario.py, docs/auditoria.md (+ manual), inventario.json, grafos SVG
+- [x] 0 instrucciones desconocidas; 14,691 dialogos; traduccion al espanol completa; 10 tests
 
-## Decisiones tomadas (ver docs/decisiones.md)
-- [x] D1: capitulos extra con la logica progresiva del original
-- [x] D2: musica en XA, ambientes en VAG cortos en bucle
-- [x] D3: video `fang tail.webm` convertido a animacion por fotogramas (8-16 fotogramas en bucle)
+### Fase 2 - Decisiones y especificacion (terminada)
+- [x] D1 capitulos extra progresivos, D2 ambientes en VAG, D3 video como animacion por fotogramas
+- [x] D4 320x240 (letterbox 320x180), D5 8 bits con dither ordenado y octree, D6 fuente 13 px y caja de 3 lineas
+- [x] D7 prueba XA + CD: pausar, cargar por paquetes contiguos, reanudar (hueco ~0.6 s)
+- [x] D8 musica XA 37.8 kHz mono con 16 carriles; efectos VAG; disco estimado ~23%
+- [x] D9 compresion LZ4; D10 memory card en 1 bloque con 2 copias; D11 presupuesto VRAM/RAM
+- [x] docs/bytecode.md v1, docs/presupuesto-audio.md, docs/presupuesto-memoria.md
+- [x] Criterios: disco con 77% libre (>=15%), VRAM 29% libre y RAM 25% libre (>=20%), memory card 1 bloque, bytecode cubre toda la auditoria
 
-## Fase 2 en curso
-- [x] Prototipo de resolucion y formato de fondos (build/reports/proto/index.html)
-- [x] D4: 320x240 (eleccion del usuario), D5: 8 bits con dither ordenado, D6: fuente 13 px y caja de 3 lineas
-- [x] Prueba tecnica XA + carga de datos del CD (D7: pausar, cargar por lotes contiguos y reanudar; hueco ~0.6 s por lote chico)
-- [ ] Fuente, compresion, formato de memory card
-- [x] D8: musica 37.8 kHz estereo en carriles, efectos VAG, presupuesto de disco ~35% (docs/presupuesto-audio.md)
-- [x] docs/bytecode.md v1 escrito (pendiente de tu revision)
-- [ ] Compresion en disco
-- [ ] Formato de la memory card (numeros reales)
-- [ ] docs/presupuesto-memoria.md (VRAM/RAM)
+## Siguiente
+- [ ] Tu revision de docs/decisiones.md, docs/bytecode.md y docs/presupuesto-memoria.md
+- [ ] Fase 3 - Convertidor de scripts y simulador
 
 ## Pendiente (fases siguientes)
-- [ ] Fase 2 - Decisiones tecnicas y especificacion (bytecode, VRAM/RAM, memory card)
 - [ ] Fase 3 - Convertidor de scripts y simulador
 - [ ] Fase 4 - Pipeline de imagenes
 - [ ] Fase 5 - Pipeline de audio
@@ -58,4 +46,6 @@ Ultima actualizacion: 2026-10-08
 ## Notas
 - mkpsxiso 2.10 no admite rutas absolutas de Windows en el XML; usar rutas relativas (ver docs/entorno.md).
 - PCSX-Redux requiere BIOS real (SCPH1001); con OpenBIOS no arranca el disco.
-- Regenerar la auditoria: `python tools/audit/inventario.py` (necesita Graphviz en el PATH).
+- Regenerar la auditoria: `python tools/audit/inventario.py`; audio: `python tools/audio/audit_audio.py`.
+- Disco de prueba XA: `python experiments/xa_test/build_test.py`.
+- Riesgos abiertos: hueco de musica al reanudar y al repetir bucles XA (medir en consola real); caras de personajes en capas (Fase 4); ATL no soportado (rotacion, zoom, desenfoque).

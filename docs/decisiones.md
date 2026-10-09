@@ -85,9 +85,21 @@
 | **Total estimado** | **~76,000** | **~23%** |
 Margen libre: ~77%. Se confirma con números reales en la Fase 9. Nota: el peso de la música en el CD no afecta los tiempos de carga (se reproduce en flujo continuo); el beneficio de bajarlo es dejar más espacio para duplicar recursos en paquetes contiguos y un `.bin` más pequeño.
 
+## 2026-10-08 - D9: Compresión LZ4 en fondos, sprites, bytecode y texto
+**Decisión:** LZ4 (máxima compresión en la PC) para fondos, sprites, `.VNB` y texto; sin compresión para XA y VAG.
+**Datos medidos:** fondos 0.66, sprites 0.17, texto 0.55 del tamaño original. Un paquete típico baja de ~400 KB a ~180 KB y ahorra ~0.7 s de lectura por ~80 ms de descompresión.
+**Detalle:** `docs/presupuesto-memoria.md` sección 3.
+
+## 2026-10-08 - D10: Memory card en 1 bloque con dos copias alternadas
+**Decisión:** un solo archivo de datos de 3,868 B (47% de un bloque) con 3 ranuras, progreso y opciones; se guarda en dos archivos alternados (`SNOOTGAME-A`/`-B`) usando 2 de los 15 bloques, para sobrevivir a un apagado durante el guardado. 14,691 líneas leídas ocupan 2 KB con margen para futuras ediciones.
+**Detalle:** `docs/presupuesto-memoria.md` sección 4.
+
+## 2026-10-08 - D11: Presupuesto de VRAM y RAM
+**Decisión:** VRAM en uso ~740 KB (71%, 29% libre): dos framebuffers de 320x240, 32 filas de paletas, 2 ranuras de fondo, ~250 KB de sprites con asignador por estantes y fuente/UI. RAM en uso ~1,526 KB (75%, 25% libre) con 640 KB de búfer de carga. Ambos cumplen el criterio de ≥20% libre.
+**Detalle:** `docs/presupuesto-memoria.md` secciones 1 y 2.
+
 ## Observación para la Fase 4
 - Los personajes se componen en capas (cuerpo + cara): en el prototipo Anon aparece sin cara porque se usó solo `anon neutral` base. El pipeline debe pre-componer cuerpo y expresión en la PC.
 
 ## Pendiente (Fase 2)
-- Compresión, formato de la memory card, mapa de VRAM/RAM.
-- Revisión del usuario de `docs/bytecode.md`.
+- Revisión del usuario de `docs/bytecode.md` y de los presupuestos.
