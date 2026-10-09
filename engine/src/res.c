@@ -178,6 +178,8 @@ static const Image *load_image(int image_id)
 				return 0;
 			}
 		e->clut_bit = take_clut();
+		while (e->clut_bit < 0 && evict_one())
+			e->clut_bit = take_clut();
 		if (e->clut_bit < 0) {
 			printf("res: sin paletas libres\n");
 			return 0;

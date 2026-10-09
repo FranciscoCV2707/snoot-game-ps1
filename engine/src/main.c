@@ -208,7 +208,7 @@ static void sprite_align(const VmSprite *s, int *xa, int *ya)
 	const uint8_t *anim;
 
 	*xa = 128;
-	*ya = 0;
+	*ya = 256;                     /* posicion por defecto de Ren'Py: centrado y apoyado abajo */
 	if (s->pos < pos_count) {
 		*xa = pos_x[s->pos];
 		*ya = pos_y[s->pos];

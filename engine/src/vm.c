@@ -106,7 +106,7 @@ static void clear_scene(Vm *vm)
 static void scene_show(Vm *vm, const int32_t *a)
 {
 	VmSprite *s = vm_sprite(vm, a[0]);
-	int i;
+	int i, existing = s != 0;
 
 	if (!s) {
 		for (i = 0; i < VM_MAX_SPRITES && vm->sprites[i].used; i++)
@@ -122,7 +122,8 @@ static void scene_show(Vm *vm, const int32_t *a)
 		s->z = (int8_t)a[3];
 	}
 	s->image = (uint16_t)a[1];
-	if (a[2] != 254)                          /* 254 = conservar posicion y animacion */
+	/* 254 = conservar posicion y animacion; 255 (sin "at") en un sprite que ya estaba tambien las conserva, como Ren'Py */
+	if (a[2] != 254 && !(a[2] == 255 && existing && a[5] == 0))
 		s->pos = (uint8_t)a[2], s->anim = (uint16_t)a[5];
 	s->flags = (uint8_t)a[4];
 }

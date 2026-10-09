@@ -21,6 +21,33 @@ static uint32_t rd32(const uint8_t *p)
 	return p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
+/*
+ * El GPU solo cierra una transferencia si recibe un numero entero de palabras. Con ancho en palabras impar y alto impar
+ * el total de medias palabras es impar y el GPU se queda esperando un dato que nunca llega. En ese caso la ultima fila
+ * se sube aparte con una media palabra de relleno, que cae dentro de la celda reservada (el ancho en palabras es impar).
+ */
+static void upload_indices(int vram_x, int vram_y, int width_words, int height)
+{
+	static uint8_t last_row[1024] __attribute__((aligned(4)));
+	RECT rect;
+	int rows = height;
+
+	if ((width_words * height) & 1)
+		rows = height - 1;
+	if (rows > 0) {
+		setRECT(&rect, vram_x, vram_y, width_words, rows);
+		LoadImage(&rect, (const uint32_t *)scratch);
+		DrawSync(0);
+	}
+	if (rows != height) {
+		memcpy(last_row, scratch + rows * width_words * 2, width_words * 2);
+		memset(last_row + width_words * 2, 0, 2);
+		setRECT(&rect, vram_x, vram_y + rows, width_words + 1, 1);
+		LoadImage(&rect, (const uint32_t *)last_row);
+		DrawSync(0);
+	}
+}
+
 int img_load(Image *img, const uint8_t *file, int file_size, int vram_x, int vram_y, int clut_y)
 {
 	RECT rect;
@@ -61,9 +88,7 @@ int img_load(Image *img, const uint8_t *file, int file_size, int vram_x, int vra
 	LoadImage(&rect, (const uint32_t *)(file + HEADER_SIZE));
 	DrawSync(0);
 	/* Indices de 8 bits: 2 pixeles por palabra de VRAM */
-	setRECT(&rect, vram_x, vram_y, img->w / 2, img->h);
-	LoadImage(&rect, (const uint32_t *)scratch);
-	DrawSync(0);
+	upload_indices(vram_x, vram_y, img->w / 2, img->h);
 	img->loaded = 1;
 	return 0;
 }
