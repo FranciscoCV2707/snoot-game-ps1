@@ -33,7 +33,8 @@ Ultima actualizacion: 2026-10-08
 - [x] D3: video `fang tail.webm` convertido a animacion por fotogramas (8-16 fotogramas en bucle)
 
 ## Fase 2 en curso
-- [ ] Prototipo de resolucion y formato de fondos
+- [x] Prototipo de resolucion y formato de fondos (build/reports/proto/index.html)
+- [ ] Visto bueno del usuario a D4 (512x240), D5 (fondos 15 bits, personajes 8 bits), D6 (fuente 13 px, 3 lineas)
 - [ ] Prueba tecnica XA + carga de datos del CD
 - [ ] Fuente, compresion, formato de memory card
 - [ ] docs/bytecode.md, docs/presupuesto-memoria.md
