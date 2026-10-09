@@ -5,7 +5,7 @@
 #include "res.h"
 #include "video.h"
 
-#define FILE_BYTES    (128 * 1024)
+#define FILE_BYTES    (172 * 1024)      /* el mayor archivo de imagen (stairs) ocupa 164 KB */
 #define MAX_ENTRIES   28
 #define CELL_WORDS    16
 #define CELL_ROWS     16
@@ -140,7 +140,7 @@ const Image *res_get(int image_id)
 static const Image *load_image(int image_id)
 {
 	char path[24];
-	int i, size, kind, w, h, region, gw, gh, gx = 0, gy = 0;
+	int i, size, kind, w, h, region, gw, gh, big, gx = 0, gy = 0;
 	Entry *e;
 
 	for (i = 0; i < MAX_ENTRIES; i++)
@@ -161,6 +161,12 @@ static const Image *load_image(int image_id)
 	region = kind == 0 ? 1 : 0;
 	gw = (w / 2 + CELL_WORDS - 1) / CELL_WORDS;
 	gh = (h + CELL_ROWS - 1) / CELL_ROWS;
+	/* un fondo que no cabe en una banda de VRAM se queda en RAM y en VRAM solo ocupa su ventana visible */
+	big = kind == 0 && (gw > GRID_W || gh > GRID_H - BAND_ROWS);
+	if (big) {
+		gw = (BIG_WIN_W / 2 + CELL_WORDS - 1) / CELL_WORDS;
+		gh = (BIG_WIN_H + CELL_ROWS - 1) / CELL_ROWS;
+	}
 
 	e = new_entry();
 	if (!e)
@@ -193,8 +199,8 @@ static const Image *load_image(int image_id)
 			memset(&grid[region][i][gx], (int)(e - entries) + 1, gw);
 	}
 	e->used = 1;
-	if (img_load(&e->img, file_buf, size, region_x[region] + gx * CELL_WORDS, gy * CELL_ROWS,
-	             CLUT_BG_Y + (e->clut_bit >= 0 ? e->clut_bit : 0)) != 0) {
+	if ((big ? img_load_big : img_load)(&e->img, file_buf, size, region_x[region] + gx * CELL_WORDS, gy * CELL_ROWS,
+	                                    CLUT_BG_Y + (e->clut_bit >= 0 ? e->clut_bit : 0)) != 0) {
 		free_entry(e);
 		return 0;
 	}

@@ -48,12 +48,10 @@ static void upload_indices(int vram_x, int vram_y, int width_words, int height)
 	}
 }
 
-int img_load(Image *img, const uint8_t *file, int file_size, int vram_x, int vram_y, int clut_y)
+static int read_header(Image *img, const uint8_t *file, int file_size, int vram_x, int vram_y, int clut_y)
 {
-	RECT rect;
-	uint32_t raw_size, comp_size;
-
 	img->loaded = 0;
+	img->big = 0;
 	if (file_size < HEADER_SIZE + PALETTE_BYTES + 8 || file[0] != 'I' || file[1] != 'M' || file[2] != 'G' || file[3] != '1')
 		return -1;
 	img->kind = file[4];
@@ -68,29 +66,101 @@ int img_load(Image *img, const uint8_t *file, int file_size, int vram_x, int vra
 	img->vram_x = vram_x;
 	img->vram_y = vram_y;
 	img->clut_y = clut_y;
+	return 0;
+}
 
-	if (img->kind > 1 || img->w == 0)
-		return 0;                    /* color solido o imagen vacia: nada que subir */
+/* Descomprime los indices de 8 bits en dst y sube la paleta de 256 entradas a su fila de CLUT */
+static int unpack(const Image *img, const uint8_t *file, uint8_t *dst, int dst_bytes)
+{
+	RECT rect;
+	uint32_t raw_size = rd32(file + HEADER_SIZE + PALETTE_BYTES);
+	uint32_t comp_size = rd32(file + HEADER_SIZE + PALETTE_BYTES + 4);
 
-	raw_size = rd32(file + HEADER_SIZE + PALETTE_BYTES);
-	comp_size = rd32(file + HEADER_SIZE + PALETTE_BYTES + 4);
-	if (raw_size > SCRATCH_BYTES || (int)raw_size != img->w * img->h) {
+	if ((int)raw_size > dst_bytes || (int)raw_size != img->w * img->h) {
 		printf("img: tamano invalido %d\n", (int)raw_size);
 		return -1;
 	}
-	if (lz4_decode(file + HEADER_SIZE + PALETTE_BYTES + 8, comp_size, scratch, raw_size) != (int)raw_size) {
+	if (lz4_decode(file + HEADER_SIZE + PALETTE_BYTES + 8, comp_size, dst, raw_size) != (int)raw_size) {
 		printf("img: error de LZ4\n");
 		return -1;
 	}
-
-	/* Paleta de 256 entradas en una fila de CLUT */
-	setRECT(&rect, 0, clut_y, 256, 1);
+	setRECT(&rect, 0, img->clut_y, 256, 1);
 	LoadImage(&rect, (const uint32_t *)(file + HEADER_SIZE));
 	DrawSync(0);
+	return 0;
+}
+
+int img_load(Image *img, const uint8_t *file, int file_size, int vram_x, int vram_y, int clut_y)
+{
+	if (read_header(img, file, file_size, vram_x, vram_y, clut_y) != 0)
+		return -1;
+	if (img->kind > 1 || img->w == 0)
+		return 0;                    /* color solido o imagen vacia: nada que subir */
+	if (unpack(img, file, scratch, SCRATCH_BYTES) != 0)
+		return -1;
 	/* Indices de 8 bits: 2 pixeles por palabra de VRAM */
 	upload_indices(vram_x, vram_y, img->w / 2, img->h);
 	img->loaded = 1;
 	return 0;
+}
+
+/* ---------------------------------------------------------------- fondos grandes */
+#define BIG_BYTES (512 * 1024)       /* el mayor (stairs, 1328x383) ocupa 497 KB */
+
+static uint8_t big_raw[BIG_BYTES] __attribute__((aligned(4)));
+static const Image *big_owner;       /* imagen cuyos indices estan en big_raw */
+static const Image *win_owner;       /* imagen cuya ventana esta en VRAM, y su esquina dentro del bitmap */
+static int win_x, win_y;
+
+int img_load_big(Image *img, const uint8_t *file, int file_size, int vram_x, int vram_y, int clut_y)
+{
+	if (read_header(img, file, file_size, vram_x, vram_y, clut_y) != 0 || img->kind != 0 || img->w == 0)
+		return -1;
+	if (unpack(img, file, big_raw, BIG_BYTES) != 0)
+		return -1;
+	big_owner = img;
+	win_owner = 0;
+	img->big = 1;
+	img->loaded = 1;
+	return 0;
+}
+
+void img_draw_big(const Image *img, int layer, int screen_x, int screen_y)
+{
+	Image win;
+	int ox, oy, cw, ch, row;
+
+	if (!img->loaded || img != big_owner)
+		return;
+	cw = img->w < BIG_WIN_W ? img->w : BIG_WIN_W;
+	ch = img->h < BIG_WIN_H ? img->h : BIG_WIN_H;
+	/* esquina de la ventana dentro del bitmap: la parte de la imagen que cae en pantalla */
+	ox = -screen_x - img->x;
+	oy = -screen_y - img->y + VIEW_Y;
+	if (ox > img->w - cw)
+		ox = img->w - cw;
+	if (oy > img->h - ch)
+		oy = img->h - ch;
+	if (ox < 0)
+		ox = 0;
+	if (oy < 0)
+		oy = 0;
+
+	if (win_owner != img || ox != win_x || oy != win_y) {
+		for (row = 0; row < ch; row++)
+			memcpy(scratch + row * cw, big_raw + (oy + row) * img->w + ox, cw);
+		upload_indices(img->vram_x, img->vram_y, cw / 2, ch);
+		win_owner = img;
+		win_x = ox;
+		win_y = oy;
+	}
+	win = *img;
+	win.big = 0;
+	win.x = 0;
+	win.y = 0;
+	win.w = win.full_w = cw;
+	win.h = win.full_h = ch;
+	img_draw(&win, layer, screen_x + img->x + ox, screen_y + img->y + oy);
 }
 
 void img_draw(const Image *img, int layer, int screen_x, int screen_y)

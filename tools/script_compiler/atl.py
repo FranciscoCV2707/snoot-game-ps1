@@ -491,6 +491,30 @@ def compile_anim(lowerer, node, extra_transforms, reveal=None, atl_first=False, 
     return len(anims), final_key
 
 
+def compile_pan(lowerer, key, start, end, seconds):
+    """`scene X at Pan(start, end, t)`: la esquina superior izquierda de la pantalla recorre la imagen en linea recta.
+
+    Se expresa como xalign/yalign del fondo (pantalla = (pantalla - imagen) * align = -punto).
+    """
+    w, h = image_size(lowerer.p, key)
+
+    def values(point):
+        xa = point[0] / (w - SCREEN_W) if w > SCREEN_W else 0.0
+        ya = point[1] / (h - SCREEN_H) if h > SCREEN_H else 0.0
+        return {"x": xa, "y": ya, "alpha": 1.0, "zoom": 1.0, "xzoom": 1.0, "rotate": 0.0,
+                "r": 1.0, "g": 1.0, "b": 1.0, "clip": 1.0}
+
+    keys = [(0.0, values(start if seconds > 0 else end), CURVE_LINEAR)]
+    if seconds > 0:
+        keys.append((seconds, values(end), CURVE_LINEAR))
+    anim = (0, tuple(encode_keys(keys)), ())
+    anims = lowerer.ir.anims
+    if anim in anims:
+        return anims.index(anim) + 1
+    anims.append(anim)
+    return len(anims)
+
+
 KEY_FMT = "<HhhBBBbbBBBB"   # 15 bytes por fotograma clave
 SWAP_FMT = "<HHBH"          # 7 bytes: tiempo, imagen, volteo, cuadros de disolver
 

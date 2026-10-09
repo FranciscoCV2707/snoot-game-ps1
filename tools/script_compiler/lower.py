@@ -18,6 +18,8 @@ SFX_CHANNELS = {"sound", "audio"}
 VOLUME_CHANNELS = {"music": 0, "ambient": 1, "ambient1": 2, "ambient2": 3, "ambient3": 4, "sound": 5, "audio": 5}
 SPECIAL_TEXTSCROLL, SPECIAL_CREDITS = 1, 2
 SHOW_RANDOM_FIRST = ("text1",)
+NUM = r"\s*(-?[\d.]+)\s*"
+PAN_RE = re.compile(rf"\bPan\(\s*\({NUM},{NUM}\)\s*,\s*\({NUM},{NUM}\)\s*,{NUM}")
 
 
 class CompileError(Exception):
@@ -486,6 +488,11 @@ class Lowerer:
             node = types.SimpleNamespace(tag="_scene", atl=None, at=[], line=n.line, file=n.file)
             self.reg.last_key["_scene"] = key
             anim, _ = atl_module.compile_anim(self, node, [], slideshow=spec)
+        else:
+            pan = PAN_RE.search(", ".join(n.at))
+            if pan:
+                x0, y0, x1, y1, seconds = (float(v) for v in pan.groups())
+                anim = atl_module.compile_pan(self, key, (x0, y0), (x1, y1), seconds)
         self.reg.mark_full(iid)
         self.emit("SCENE", n.line, image=iid, anim=anim)
         state = VState()

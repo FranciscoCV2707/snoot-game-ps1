@@ -48,6 +48,7 @@ static State state;
 static TextRun run;
 static int scene_dirty, show_box = 1, debug;
 static int pause_left, say_seen_before;
+static int bg_start;                        /* cuadro en que aparecio el fondo (inicio de su Pan) */
 static uint8_t seen[SEEN_BYTES];
 static uint32_t endings_mask, bonus_mask;
 
@@ -180,6 +181,9 @@ static void notify(void *user, int opcode, const int32_t *args, int nargs)
 	(void)nargs;
 	switch (opcode) {
 	case OP_SCENE:
+		bg_start = video_frames();
+		scene_dirty = 1;
+		break;
 	case OP_SHOW:
 	case OP_HIDE:
 	case OP_BACKGROUND:
@@ -225,6 +229,35 @@ static void sprite_align(const VmSprite *s, int *xa, int *ya)
 	}
 }
 
+/* Alineacion del fondo en el cuadro actual (8.8 desplazado 8 bits mas): interpolacion lineal entre claves (Pan). */
+static void bg_align(int *xa, int *ya)
+{
+	const uint8_t *anim = anim_data(vm.bg_anim), *k0, *k1;
+	int t = video_frames() - bg_start, n, i, t0, t1, x0, y0;
+
+	*xa = 128 << 8;                /* sin animacion: posicion por defecto de Ren'Py */
+	*ya = 256 << 8;
+	if (!anim || !anim[0])
+		return;
+	n = anim[0];
+	for (i = 0; i < n - 1 && t >= rd16(anim + 3 + 15 * (i + 1)); i++)
+		;
+	k0 = anim + 3 + 15 * i;
+	x0 = (int16_t)rd16(k0 + 2);
+	y0 = (int16_t)rd16(k0 + 4);
+	*xa = x0 << 8;
+	*ya = y0 << 8;
+	if (i == n - 1)
+		return;
+	k1 = k0 + 15;
+	t0 = rd16(k0);
+	t1 = rd16(k1);
+	if (t <= t0 || t1 <= t0)
+		return;
+	*xa += (((int16_t)rd16(k1 + 2) - x0) * 256 * (t - t0)) / (t1 - t0);
+	*ya += (((int16_t)rd16(k1 + 4) - y0) * 256 * (t - t0)) / (t1 - t0);
+}
+
 static void scene_sync(void)
 {
 	int i;
@@ -253,10 +286,19 @@ static void draw_scene(void)
 	if (vm.bg) {
 		const Image *bg = res_get(vm.bg);
 
-		if (bg && bg->kind == 2)
+		if (bg && bg->kind == 2) {
 			video_rect(LAYER_BG, 0, VIEW_Y, SCREEN_W, VIEW_H, bg->solid[0], bg->solid[1], bg->solid[2], 0);
-		else if (bg)
-			img_draw(bg, LAYER_BG, 0, VIEW_Y);
+		} else if (bg) {
+			int xa, ya, bx, by;
+
+			bg_align(&xa, &ya);
+			bx = ((SCREEN_W - bg->full_w) * xa) >> 16;
+			by = VIEW_Y + (((VIEW_H - bg->full_h) * ya) >> 16);
+			if (bg->big)
+				img_draw_big(bg, LAYER_BG, bx, by);
+			else
+				img_draw(bg, LAYER_BG, bx, by);
+		}
 	}
 	for (i = 0; i < VM_MAX_SPRITES; i++)
 		if (vm.sprites[i].used && vm.sprites[i].image) {
