@@ -98,8 +98,36 @@ Margen libre: ~77%. Se confirma con números reales en la Fase 9. Nota: el peso 
 **Decisión:** VRAM en uso ~740 KB (71%, 29% libre): dos framebuffers de 320x240, 32 filas de paletas, 2 ranuras de fondo, ~250 KB de sprites con asignador por estantes y fuente/UI. RAM en uso ~1,526 KB (75%, 25% libre) con 640 KB de búfer de carga. Ambos cumplen el criterio de ≥20% libre.
 **Detalle:** `docs/presupuesto-memoria.md` secciones 1 y 2.
 
+## 2026-10-08 - D12: Huecos de música (bucle y reanudación)
+**Datos** (`tools/audio/segment_stats.py`): los 334 tramos de música de la historia son largos comparados con las pistas (media de 71 s): casi 8 de cada 10 se repiten más de una vez, algunos 10 veces o más (estimación en el peor caso: cuenta las dos ramas de cada decisión). Repetir un bucle exige buscar hacia atrás en el CD, y eso corta el audio unos 0.3-0.5 s. Un flujo XA solo avanza hacia adelante; cambiar de canal sí es sin hueco, pero no evita el retroceso.
+**Decisión:**
+1. **Copias seguidas por pista:** cada pista que se repite se graba varias veces seguidas en el CD (objetivo 90 s de audio continuo, máximo 3 copias). Costo: música de ~20.7% del CD en vez de 12.8% (`+27,000 sectores`); disco total ~30%. Los parámetros (`LOOP_TARGET_SECONDS = 90`, `LOOP_MAX_COPIES = 3`) son ajustables; con 180 s y 4 copias sería ~34% de música.
+2. **Rebobinado adaptativo:** el motor espera a la siguiente transición con fundido o disolver para volver al inicio; el cambio de imagen tapa el hueco. Las escenas cambian mucho más seguido que las copias se acaban (796 `scene` en la historia), así que casi todos los saltos quedan ocultos.
+3. **Salto forzado:** si las copias se acaban sin transición, fundido de 120 ms grabado al final de cada copia y de entrada al inicio: sin chasquidos, solo un breve silencio.
+4. **Reanudación tras cargas:** casi no ocurre. Las cargas se hacen al cambiar de pista (la música ya está en fundido). Las demás las coloca el compilador en una transición, y el volumen del CD baja y sube en 150 ms alrededor de la pausa.
+5. El simulador reporta saltos y cargas forzadas por capítulo; si son muchos, se sube `LOOP_TARGET_SECONDS`.
+**Descartado:** retocar el final con una cola en la RAM de sonido (alineación muy frágil sin consola real); música en CD-DA (74 min de audio llenan todo el disco).
+
+## 2026-10-08 - D13: Personajes y fondos con capas (corrección del riesgo)
+**Hallazgo:** revisando `src/image_definitions.rpy`, los personajes **no** se componen en capas: cada expresión es un archivo completo (`anon neutral.webp`, `fang angry.webp`...). En el prototipo Anon aparece sin cara porque su diseño no tiene rostro, no por una capa faltante. Mi nota anterior era un error de interpretación.
+**Lo que sí se compone:**
+- 245 definiciones `im.Flip`: se resuelven con el bit de volteo del sprite, sin duplicar imágenes.
+- Fondos con texto traducido (`Composite(base, texto_es)`, 39 imágenes en `tl/es/images`): el pipeline pre-compone fondo y texto en la PC (una imagen final por fondo).
+- Dos `layeredimage` de pantallas de teléfono: el compilador pre-renderiza una imagen por combinación de atributos que use la historia.
+**Decisión:** pre-composición total en la PC; el motor solo dibuja una textura por cada imagen. Los sprites usan paleta propia por personaje (compartida entre sus expresiones) para que no cambien de color al cambiar de cara.
+
+## 2026-10-08 - D14: Animaciones (rotación, zoom, desenfoque, color)
+**Datos** (ATL de la historia, 2,957 bloques): casi todo es posición (`xalign`/`yalign`); `zoom` (~50 usos), `rotate` (~40), `xzoom` (~13), `matrixcolor` (10), `blur` (6), `alignaround` (2).
+**Decisión:** se soportan todos, con técnicas de PS1:
+- **Zoom, giro y espejo animados:** sprites dibujados como cuadriláteros texturizados (`POLY_FT4`); la GPU escala y gira sin costo notable.
+- **Tinte y brillo (`matrixcolor`):** modulación de color de la primitiva (hasta 2x). Sin saturación.
+- **`blur`:** las escenas desenfocadas son imágenes ya incluidas en el juego; un `blur` animado se hace con disolver entre nítida y desenfocada.
+- **`shudder`/`wiggle` (`alignaround`):** vibración de posición con 2 a 4 claves en bucle.
+- La tabla ANIM crece a 16 bytes por clave (zoom, xzoom, rotación, r/g/b). Detalle en `docs/bytecode.md` sección 5.
+**No soportado (documentado):** `matrixcolor` de saturación, desenfoque en vivo, curvas elásticas exactas (se aproximan).
+
 ## Observación para la Fase 4
-- Los personajes se componen en capas (cuerpo + cara): en el prototipo Anon aparece sin cara porque se usó solo `anon neutral` base. El pipeline debe pre-componer cuerpo y expresión en la PC.
+- Los sprites usan una paleta por personaje (D13). Pre-componer en la PC solo los fondos con texto traducido y las dos pantallas de teléfono.
 
 ## Pendiente (Fase 2)
 - Revisión del usuario de `docs/bytecode.md` y de los presupuestos.

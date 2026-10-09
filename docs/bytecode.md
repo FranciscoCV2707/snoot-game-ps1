@@ -62,7 +62,7 @@ Formato: `opcode u8` seguido de los argumentos. Tamaños en bytes entre parénte
 
 - `tag` identifica el "lugar" del sprite (anon, fang, naser, bg...). `SHOW` con un tag que ya existe lo reemplaza. Hasta 8 sprites simultáneos más el fondo.
 - `z` es el orden de dibujo (de `behind`): mayor se dibuja encima.
-- `flags` de `SHOW`: bit0 volteado (`xzoom -1`/`flip`), bit1 empezar invisible.
+- `flags` de `SHOW`: bit0 volteado (`xzoom -1`/`flip`), bit1 empezar invisible. Las 245 definiciones `im.Flip(...)` del juego no generan imágenes nuevas: el compilador usa la imagen original con el bit de volteo (cambia las coordenadas de textura).
 - `anim` indexa la tabla ANIM del capítulo (0 = ninguna).
 - Los cambios de `SCENE`/`SHOW`/`HIDE` se acumulan; `TRANSITION` los presenta con el efecto indicado. Sin `TRANSITION`, el cambio se ve de golpe cuando termina la instrucción de texto o pausa siguiente.
 - Tipos de `TRANSITION`: 0 corte (`with None`), 1 disolver (a = duración en cuadros), 2 fundido por negro (a = salida, b = espera, c = entrada), 3 sacudida vertical, 4 sacudida horizontal. Las demás transiciones (`MoveTransition`, `easeinbottom`, `move`) se aproximan a disolver o corte.
@@ -134,11 +134,17 @@ Formato: `opcode u8` seguido de los argumentos. Tamaños en bytes entre parénte
 El compilador "ejecuta" los bloques ATL de Ren'Py (unas 2,957 apariciones, sobre todo `xalign`/`yalign` con `easein_cubic`, `ease_cubic`, `easeout_cubic`, `linear`, `parallel` y `repeat`) y deja una lista de fotogramas clave por sprite:
 ```
 anim:  u8 número de fotogramas clave (1-8), u8 flags (bit0 bucle, bit1 vaivén)
-clave: u16 tiempo en cuadros, s16 xalign (8.8), s16 yalign (8.8), u8 alfa (0-255), u8 curva
+clave: u16 tiempo en cuadros, s16 xalign (8.8), s16 yalign (8.8), u8 alfa (0-255), u8 curva,
+       u8 zoom (1/64; 64 = 1.0), s8 xzoom (1/64; negativo = espejo), s8 rotación (360/256 grados por unidad),
+       u8 r, u8 g, u8 b (modulación de color; 128 = sin cambio, 255 = 2x)   -> 16 bytes
 ```
 - Curvas: 0 lineal, 1 aceleración (ease-in cúbica), 2 desaceleración (ease-out cúbica), 3 ease-in-out. Las demás (`back`, `elastic`, `quart`, `quad`, `bounce`) se aproximan a la más cercana.
-- `parallel:` de ejes distintos se combina en la misma clave. Los bloques que superan 8 claves se recortan y se reportan.
-- No se soportan `rotate`, `zoom`, `matrixcolor`, `blur` ni `alignaround` (aparecen unas decenas de veces); el compilador los reporta y se dejan sin animar. El zoom del logo en créditos y el temblor (`shudder`) son casos especiales de `SPECIAL`/`TRANSITION`.
+- `parallel:` de ejes distintos se combina en la misma clave. Los bloques que superan 8 claves se recortan y se reportan. `choice:` (25 usos) toma siempre la primera rama.
+- **Zoom, giro y espejo animados** (`zoom`, `xzoom`, `rotate`: unos 120 usos): los sprites con claves de estos tipos se dibujan como cuadriláteros texturizados (`POLY_FT4`) en vez de sprites rectos; la GPU de PS1 los escala y gira sin costo de CPU relevante (el giro usa una tabla de senos de 256 entradas). Sin zoom ni giro se usa el sprite recto, más barato.
+- **`matrixcolor`** (10 usos): `TintMatrix` y `BrightnessMatrix(-1)` se convierten en la modulación r,g,b del sprite (la GPU multiplica la textura por ese color, hasta 2x). `BrightnessMatrix(+1)` (pasar a blanco) se aproxima con 2x de brillo. No se soporta saturación.
+- **`blur`**: las escenas "desenfocadas" del juego (`home fang night blurred`, `anon prom blurred`) son imágenes distintas ya incluidas en el juego; se tratan como imágenes normales. Un `blur` animado se aproxima con un disolver entre la imagen nítida y la desenfocada.
+- **`alignaround` / `shudder` / `wiggle`**: se convierten en vibración de posición (claves xalign/yalign de 2 a 4 puntos en bucle); el temblor de pantalla completo es `TRANSITION` 3/4. El zoom del logo en créditos es parte de `SPECIAL 2`.
+- Las dos `layeredimage` del juego son pantallas de teléfono; el compilador las pre-renderiza como una imagen por combinación de atributos usada (ver `docs/auditoria_manual.md`).
 - Posiciones con nombre (`scenter`, `sleft`, `acenter`, `ncenter`, `rleft`, ...) son entradas de `positions.bin` (xalign, yalign) tomadas de `src/misc_definitions.rpy`; algunas salen de pantalla a propósito (ej. `nleft` = -0.2).
 - Animación por fotogramas (`fang tail`, ver D3): una imagen especial del índice de imágenes con lista de cuadros y tiempo por cuadro; se muestra con `SHOW` normal.
 
@@ -165,6 +171,13 @@ Cada paquete (`packs.bin`) es un rango contiguo de sectores en el CD con los fon
 4. El disco duplica recursos entre paquetes para que cada paquete sea contiguo (sobra espacio, ver `docs/presupuesto-audio.md`).
 
 Si un recurso no está residente al usarse (error del compilador), el motor lo carga bajo demanda con pausa de la música y cuenta el incidente en el modo de depuración.
+
+## 7b. Reglas de audio en ejecución (D12)
+- **Bucles de música:** cada pista que se repite se graba en el CD en varias copias seguidas (`copias` en `audio_index.bin`). Al terminar las copias, el motor debe volver al inicio con una búsqueda (hueco de ~0.3-0.5 s).
+- **Rebobinado adaptativo:** cuando quedan menos de 30 s de copias, el motor "arma" el rebobinado y lo ejecuta en la siguiente `TRANSITION` con fundido o disolver (el cambio de imagen tapa el hueco). Solo si las copias se acaban antes de una transición, se hace el salto forzado.
+- **Salto forzado:** cada copia termina con un fundido de salida de 120 ms y empieza con uno de entrada de 120 ms grabados en el audio, para que no haya chasquidos.
+- **Cargas a mitad de un tramo:** el compilador coloca `LOAD_PACK` en la última `TRANSITION` anterior al primer uso del recurso; el motor baja el volumen del CD en 150 ms, pausa, carga, reanuda en la posición guardada y sube el volumen. Las cargas al cambiar de pista no necesitan reanudar.
+- El simulador cuenta saltos forzados y cargas forzadas por capítulo; la meta es que sean casos aislados.
 
 ## 8. Límites
 | Recurso | Límite |

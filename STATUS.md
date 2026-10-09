@@ -48,4 +48,6 @@ Ultima actualizacion: 2026-10-08
 - PCSX-Redux requiere BIOS real (SCPH1001); con OpenBIOS no arranca el disco.
 - Regenerar la auditoria: `python tools/audit/inventario.py`; audio: `python tools/audio/audit_audio.py`.
 - Disco de prueba XA: `python experiments/xa_test/build_test.py`.
-- Riesgos abiertos: hueco de musica al reanudar y al repetir bucles XA (medir en consola real); caras de personajes en capas (Fase 4); ATL no soportado (rotacion, zoom, desenfoque).
+- Riesgos resueltos por diseno: D12 huecos de musica (copias seguidas + rebobinado en transiciones), D13 personajes (sin capas; solo se pre-componen fondos con texto y pantallas de telefono), D14 animaciones (zoom/giro con POLY_FT4, tinte con modulacion de color).
+- Riesgo que solo se confirma en consola real (Fase 11): duracion real del salto de busqueda del CD.
+- Estadisticas de bucles: `python tools/audio/segment_stats.py`.
