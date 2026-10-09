@@ -124,6 +124,7 @@ Margen libre: ~77%. Se confirma con números reales en la Fase 9. Nota: el peso 
 - **`blur`:** las escenas desenfocadas son imágenes ya incluidas en el juego; un `blur` animado se hace con disolver entre nítida y desenfocada.
 - **`shudder`/`wiggle` (`alignaround`):** vibración de posición con 2 a 4 claves en bucle.
 - La tabla ANIM crece a 16 bytes por clave (zoom, xzoom, rotación, r/g/b). Detalle en `docs/bytecode.md` sección 5.
+**Ampliación (a pedido del usuario, para conservar la fidelidad):** cambios de imagen dentro de un ATL (eventos), sonidos disparados desde un ATL, `repeat N` desenrollado (hasta 64 claves), `camera` (instrucción `CAMERA`), desenfoque de escena con variantes pre-renderizadas, `AlphaMask` (imagen pre-renderizada y recorte vertical animado) y las transiciones de movimiento y de fundido por blanco (tipos 5 y 6).
 **No soportado (documentado):** `matrixcolor` de saturación, desenfoque en vivo, curvas elásticas exactas (se aproximan).
 
 ## Observación para la Fase 4

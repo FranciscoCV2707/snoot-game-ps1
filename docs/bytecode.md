@@ -59,13 +59,17 @@ Formato: `opcode u8` seguido de los argumentos. Tamaños en bytes entre parénte
 | 0x13 | `TRANSITION` | tipo u8, a u16, b u16, c u16 (8) | `with Dissolve(1)`, `with fade`, `with None` |
 | 0x14 | `SHOW_RANDOM` | tag u8, primera imagen u16, cantidad u8, flags u8 (6) | `showCG()` (elige 1 de las 9 imágenes de texto en una posición aleatoria) |
 | 0x15 | `MARK_SEEN` | imagen u16 (3) | `renpy.mark_image_seen(...)` |
+| 0x16 | `CAMERA` | zoom u16 (1/256), tx s16, ty s16, tiempo u16, curva u8 (10) | `camera: linear 0.2 zoom 3.243 xpos 2510 ypos 246` (zoom y desplazamiento de toda la escena: pantalla = zoom x punto - (tx, ty), en pixeles de 1920x1080) |
+| 0x17 | `BACKGROUND` | imagen u16 (3) | cambia solo el fondo sin borrar sprites (se usa en el desenfoque de la camara) |
 
 - `tag` identifica el "lugar" del sprite (anon, fang, naser, bg...). `SHOW` con un tag que ya existe lo reemplaza. Hasta 12 sprites simultáneos más el fondo (los fondos de color sólido, como `black`, `white` o `dimmer_*`, no cuentan: se dibujan como rectángulos).
 - `z` es el orden de dibujo (de `behind`): mayor se dibuja encima.
 - `flags` de `SHOW`: bit0 volteado (`xzoom -1`/`flip`), bit1 empezar invisible. Las 245 definiciones `im.Flip(...)` del juego no generan imágenes nuevas: el compilador usa la imagen original con el bit de volteo (cambia las coordenadas de textura).
 - `anim` indexa la tabla ANIM del capítulo (0 = ninguna, 1 = la primera). Una `SHOW` sobre un tag existente con `z` = -128 conserva su orden de dibujo.
 - Los cambios de `SCENE`/`SHOW`/`HIDE` se acumulan; `TRANSITION` los presenta con el efecto indicado. Sin `TRANSITION`, el cambio se ve de golpe cuando termina la instrucción de texto o pausa siguiente.
-- Tipos de `TRANSITION`: 0 corte (`with None`), 1 disolver (a = duración en cuadros), 2 fundido por negro (a = salida, b = espera, c = entrada), 3 sacudida vertical, 4 sacudida horizontal. Las demás transiciones (`MoveTransition`, `easeinbottom`, `move`) se aproximan a disolver o corte.
+- Tipos de `TRANSITION`: 0 corte (`with None`), 1 disolver (a = duración en cuadros), 2 fundido por negro (a = salida, b = espera, c = entrada), 3 sacudida vertical y 4 horizontal (a = duración, b = amplitud en pixeles de 1920x1080), 5 movimiento (`MoveTransition`: a = duración, b = dirección de entrada en el nibble bajo y de salida en el alto, 1 izquierda, 2 derecha, 3 arriba, 4 abajo; c = curva 0 lineal, 1 aceleración, 2 desaceleración, 3 ambas), 6 fundido por blanco (`Fade(..., color="#fff")`).
+- Movimiento (tipo 5): los sprites que ya estaban y cambian de posición se desplazan de la posición anterior a la nueva; los que entran vienen desde el borde indicado y los que salen se van hacia el borde indicado. Cubre `move`, `ease`, `easein*`, `easeout*`, `moveout*` y `MoveTransition(...)`.
+- `SHOW` con `pos` = 254 solo cambia la imagen del tag y conserva su posición y animación.
 - Imágenes con efecto de galería o final: el índice de imágenes marca el bit; el motor lo registra al mostrarse con `SCENE`/`SHOW`. Las cuatro imágenes `e1of4`...`e4of4` registran además el final alcanzado.
 
 ### Audio
@@ -134,17 +138,22 @@ Formato: `opcode u8` seguido de los argumentos. Tamaños en bytes entre parénte
 ## 5. Tabla ANIM (animaciones de sprites)
 El compilador "ejecuta" los bloques ATL de Ren'Py (unas 2,957 apariciones, sobre todo `xalign`/`yalign` con `easein_cubic`, `ease_cubic`, `easeout_cubic`, `linear`, `parallel` y `repeat`) y deja una lista de fotogramas clave por sprite:
 ```
-anim:  u8 número de fotogramas clave (1-8), u8 flags (bit0 bucle, bit1 vaivén)
+anim:  u8 número de fotogramas clave (1-64), u8 flags (bit0 bucle), u8 número de eventos
 clave: u16 tiempo en cuadros, s16 xalign (8.8), s16 yalign (8.8), u8 alfa (0-255), u8 curva,
        u8 zoom (1/64; 64 = 1.0), s8 xzoom (1/64; negativo = espejo), s8 rotación (360/256 grados por unidad),
-       u8 r, u8 g, u8 b (modulación de color; 128 = sin cambio, 255 = 2x)   -> 14 bytes
+       u8 r, u8 g, u8 b (modulación de color; 128 = sin cambio, 255 = 2x), u8 recorte (255 = completo)   -> 15 bytes
+evento: u16 tiempo en cuadros, u16 imagen o sonido, u8 flags (bit0 espejo, bit1 sonido), u16 cuadros de disolver (imagen) o cantidad de variantes al azar (sonido)   -> 7 bytes
 ```
 - Curvas: 0 lineal, 1 aceleración (ease-in cúbica), 2 desaceleración (ease-out cúbica), 3 ease-in-out. Las demás (`back`, `elastic`, `quart`, `quad`, `bounce`) se aproximan a la más cercana.
-- `parallel:` de ejes distintos se combina en la misma clave. Los bloques que superan 8 claves se recortan y se reportan. `choice:` (25 usos) toma siempre la primera rama.
+- `parallel:` de ejes distintos se combina en la misma clave. `repeat N` se desenrolla (hasta 40 repeticiones) y los bucles infinitos activan el bit de bucle. Con más de 64 claves se simplifica y se reporta. `choice:` (25 usos) toma siempre la primera rama.
 - **Zoom, giro y espejo animados** (`zoom`, `xzoom`, `rotate`: unos 120 usos): los sprites con claves de estos tipos se dibujan como cuadriláteros texturizados (`POLY_FT4`) en vez de sprites rectos; la GPU de PS1 los escala y gira sin costo de CPU relevante (el giro usa una tabla de senos de 256 entradas). Sin zoom ni giro se usa el sprite recto, más barato.
 - **`matrixcolor`** (10 usos): `TintMatrix` y `BrightnessMatrix(-1)` se convierten en la modulación r,g,b del sprite (la GPU multiplica la textura por ese color, hasta 2x). `BrightnessMatrix(+1)` (pasar a blanco) se aproxima con 2x de brillo. No se soporta saturación.
-- **`blur`**: las escenas "desenfocadas" del juego (`home fang night blurred`, `anon prom blurred`) son imágenes distintas ya incluidas en el juego; se tratan como imágenes normales. Un `blur` animado se aproxima con un disolver entre la imagen nítida y la desenfocada.
-- **`alignaround` / `shudder` / `wiggle`**: se convierten en vibración de posición (claves xalign/yalign de 2 a 4 puntos en bucle); el temblor de pantalla completo es `TRANSITION` 3/4. El zoom del logo en créditos es parte de `SPECIAL 2`.
+- **Cambios de imagen dentro de un ATL** (`"anon happy" with dissolve`, 40 en el juego): son eventos de la animación. A su hora el motor cambia la textura del sprite (con disolver o de golpe).
+- **Funciones de Python dentro de un ATL** (`fang_kicks_a_car_workaround_sfx_fuck_renpy`): evento de sonido que elige al azar entre las variantes (`carKick1`/`carKick2`).
+- **`AlphaMask`** (`show expression`): una silueta fija (`noir` con la forma de `raymbabox`/`raymba2`) es una imagen pre-renderizada de tipo `alphamask`; la franja que se abre en vertical sobre el cartel del capítulo 4 es el sprite del cartel con recorte vertical animado (campo de recorte de cada clave).
+- **`camera`**: el zoom y desplazamiento de toda la escena es la instrucción `CAMERA`; el desenfoque (`blur 30` en 5 s) cambia fondo y sprites a sus variantes desenfocadas pre-renderizadas con un disolver de esa duración.
+- **`blur` estático**: las escenas "desenfocadas" del juego (`home fang night blurred`) son imágenes aparte; se tratan como imágenes normales.
+- **`alignaround` / `shudder` / `wiggle`**: se convierten en vibración de posición (claves xalign/yalign en bucle); el temblor de pantalla completo es `TRANSITION` 3/4. El zoom del logo en créditos es parte de `SPECIAL 2`.
 - Las dos `layeredimage` del juego son pantallas de teléfono; el compilador las pre-renderiza como una imagen por combinación de atributos usada (ver `docs/auditoria_manual.md`).
 - Posiciones con nombre (`scenter`, `sleft`, `acenter`, `ncenter`, `rleft`, ...) son entradas de `positions.bin` (xalign, yalign) tomadas de `src/misc_definitions.rpy`; algunas salen de pantalla a propósito (ej. `nleft` = -0.2).
 - Animación por fotogramas (`fang tail`, ver D3): una imagen especial del índice de imágenes con lista de cuadros y tiempo por cuadro; se muestra con `SHOW` normal.

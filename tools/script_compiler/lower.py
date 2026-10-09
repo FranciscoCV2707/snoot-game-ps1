@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from tools.script_compiler import atl as atl_module
 from tools.script_compiler import rpy_parser as rp
 from tools.script_compiler import textfmt
-from tools.script_compiler.opcodes import FLAG_FLIP, OP_CODE, POS_NONE, Z_KEEP
+from tools.script_compiler.opcodes import FLAG_FLIP, OP_CODE, POS_KEEP, POS_NONE, Z_KEEP
 
 MUSIC_CHANNELS = {"music": 0, "music1": 0, "music2": 0}
 AMBIENT_SLOTS = {"ambient": 0, "ambient1": 1, "ambient2": 2, "ambient3": 3}
@@ -71,10 +71,12 @@ class Registry:
         self._image_ids = {}
         self.audio = []
         self._audio_ids = {}
+        self._audio_groups = {}
         self.vars = {}
         self.tag_ids = {}
         self.last_key = {}
         self.pos_state = {}
+        self.camera = {"zoom": 1.0, "x": 0.0, "y": 0.0, "blur": 0.0}
 
     def image_id(self, key):
         recipe, flip = self.project.images.canonical(key)
@@ -96,6 +98,19 @@ class Registry:
             self._audio_ids[real] = len(self.audio)
             self.audio.append({"path": real})
         return self._audio_ids[real]
+
+    def audio_group(self, paths):
+        """IDs consecutivos para elegir uno al azar entre varios sonidos (se duplican entradas si hace falta)."""
+        ids = [self.audio_id(p) for p in paths]
+        if ids == list(range(ids[0], ids[0] + len(ids))):
+            return ids
+        key = tuple(paths)
+        if key not in self._audio_groups:
+            first = len(self.audio)
+            for p in paths:
+                self.audio.append({"path": self.project.audio_path(p)})
+            self._audio_groups[key] = list(range(first, first + len(paths)))
+        return self._audio_groups[key]
 
     def var(self, name):
         if name not in self.vars:
@@ -264,8 +279,50 @@ class Lowerer:
         return state
 
     def n_Camera(self, n, state):
-        self.warn(n, "camera (zoom/desenfoque de toda la escena) ignorada")
+        """camera: zoom y desplazamiento de toda la escena (CAMERA) y desenfoque (variantes desenfocadas con disolver)."""
+        cam = self.reg.camera
+        for text, _ in n.atl:
+            tokens = atl_module.split_tokens(text)
+            curve, seconds, rest = 0, 0.0, tokens
+            if tokens and atl_module.curve_for(tokens[0]) is not None:
+                curve, seconds, rest = atl_module.curve_for(tokens[0]), rp.eval_number(tokens[1]), tokens[2:]
+            moved, blur = False, None
+            for name, raw in zip(rest[0::2], rest[1::2]):
+                value = atl_module.parse_value(raw)
+                if name == "zoom":
+                    cam["zoom"], moved = float(value), True
+                elif name == "xpos":
+                    cam["x"], moved = float(value), True
+                elif name == "ypos":
+                    cam["y"], moved = float(value), True
+                elif name == "blur":
+                    blur = float(value)
+                elif name not in ("perspective",):
+                    self.warn(n, f"propiedad de camera no soportada: {name}")
+            if moved:
+                self.emit("CAMERA", n.line, zoom=int(round(cam["zoom"] * 256)), tx=int(cam["x"]), ty=int(cam["y"]),
+                          time=frames(seconds), curve=curve)
+            if blur is not None and blur != cam["blur"]:
+                self.camera_blur(n, state, blur, seconds)
+                cam["blur"] = blur
         return state
+
+    def camera_blur(self, n, state, value, seconds):
+        """Desenfoque de toda la escena: el fondo y los sprites pasan a su variante desenfocada con un disolver."""
+        images = self.p.images
+        for tag, keys in state.tags.items():
+            key = sorted(keys)[0]
+            recipe, flip = images.canonical(key)
+            if recipe["op"] == "solid":
+                continue
+            target = key if value <= 0 else images.add_blur(key, value)
+            iid, tflip = self.reg.image_id(target)
+            if tag == "_scene":
+                self.emit("BACKGROUND", n.line, image=iid)
+            else:
+                self.emit("SHOW", n.line, tag=self.reg.tag(tag), image=iid, pos=POS_KEEP, z=Z_KEEP,
+                          flags=FLAG_FLIP if tflip else 0, anim=0)
+        self.emit("TRANSITION", n.line, type=1, a=frames(seconds) if seconds else 1, b=0, c=0)
 
     def n_Menu(self, n, state):
         end = self.new_label("menuend")
@@ -405,8 +462,7 @@ class Lowerer:
 
     def n_Show(self, n, state):
         if n.image[0] == "expression":
-            self.warn(n, "show expression (mascara) ignorada")
-            return state
+            return self.show_expression(n, state)
         key = self.resolve(n.image, n.tag, state, n)
         self.reg.last_key[n.tag] = key
         iid, flip = self.reg.image_id(key)
@@ -432,9 +488,68 @@ class Lowerer:
                 extra_transforms.append(name)
             elif name not in ("vpunch", "hpunch", "center"):
                 self.warn(n, f"transform desconocido: {name}")
-        anim = atl_module.compile_anim(self, n, extra_transforms)
+        anim, final = atl_module.compile_anim(self, n, extra_transforms)
         flags = FLAG_FLIP if flip else 0
         self.emit("SHOW", n.line, tag=self.reg.tag(n.tag), image=iid, pos=pos, z=z, flags=flags, anim=anim)
+        state.tags[n.tag] = {final or key}
+        if final:
+            self.reg.last_key[n.tag] = final
+        if n.with_:
+            self.transition(n.with_, n)
+        return state
+
+    def resolve_swap(self, words, tag, prev_key, node):
+        """Imagen a la que cambia un ATL (`"anon happy" with dissolve`), con los atributos actuales del tag."""
+        attrs = prev_key[1:] if prev_key else ()
+        if words[0] in self.p.images.layered:
+            return self.p.images.resolve_layered(words, attrs)
+        key = self.p.images.resolve(words, attrs)
+        if key is None:
+            raise CompileError(f"{node.file}:{node.line}: imagen de ATL no resuelta: {' '.join(words)}")
+        return key
+
+    def show_expression(self, n, state):
+        """show expression AlphaMask(contenido, At(mascara, transformaciones)): silueta o franja que se abre."""
+        import types
+        try:
+            call = ast.parse(" ".join(n.image[1:]), mode="eval").body
+            content = call.args[0].value
+            mask_arg = call.args[1]
+            if isinstance(mask_arg, ast.Call):
+                mask = mask_arg.args[0].value
+                transforms = [a.id for a in mask_arg.args[1:] if isinstance(a, ast.Name)]
+            else:
+                mask, transforms = mask_arg.value, []
+            assert ast.unparse(call.func) == "AlphaMask"
+        except (SyntaxError, AttributeError, IndexError, AssertionError):
+            raise CompileError(f"{n.file}:{n.line}: show expression sin soporte: {' '.join(n.image)}")
+        images = self.p.images
+        reveal_tfs = [t for t in transforms if any("yzoom" in text for text, _ in self.p.transforms.get(t, []))]
+        node = types.SimpleNamespace(tag=n.tag, atl=n.atl, at=list(n.at), line=n.line, file=n.file)
+        if reveal_tfs:
+            ckey, mkey = images.resolve(content.split()), images.resolve(mask.split())
+            if ckey is None or mkey is None:
+                raise CompileError(f"{n.file}:{n.line}: imagen de AlphaMask no resuelta")
+            ratio = atl_module.image_size(self.p, mkey)[1] / atl_module.image_size(self.p, ckey)[1]
+            self.reg.last_key[n.tag] = ckey
+            anim, _ = atl_module.compile_anim(self, node, reveal_tfs, reveal=ratio, atl_first=True)
+            key = ckey
+        else:
+            key = images.add_alphamask(content.split(), mask.split())
+            if key is None:
+                raise CompileError(f"{n.file}:{n.line}: imagen de AlphaMask no resuelta")
+            self.reg.last_key[n.tag] = key
+            node.at = list(n.at) + transforms
+            extra = [t for t in node.at if t in self.p.transforms and t not in self.p.positions]
+            anim, _ = atl_module.compile_anim(self, node, extra)
+        iid, flip = self.reg.image_id(key)
+        existing = n.tag in state.tags
+        top = max(state.z.values(), default=0)
+        z = Z_KEEP if existing and not n.behind else min(120, top + 1)
+        if z != Z_KEEP:
+            state.z[n.tag] = z
+        pos = next((self.p.positions[a] for a in node.at if a in self.p.positions), POS_NONE)
+        self.emit("SHOW", n.line, tag=self.reg.tag(n.tag), image=iid, pos=pos, z=z, flags=FLAG_FLIP if flip else 0, anim=anim)
         state.tags[n.tag] = {key}
         if n.with_:
             self.transition(n.with_, n)
@@ -745,14 +860,30 @@ class Lowerer:
         raise CompileError(f"expresion constante sin soporte: {ast.unparse(t)}")
 
 
+DIRECTIONS = {"left": 1, "right": 2, "top": 3, "bottom": 4}
 TRANSITION_NAMES = {
-    "dissolve": (1, 30, 0, 0), "fade": (2, 30, 0, 30), "vpunch": (3, 20, 0, 0), "hpunch": (4, 20, 0, 0),
-    "None": (0, 0, 0, 0), "move": (0, 0, 0, 0), "ease": (1, 30, 0, 0), "easeinbottom": (1, 30, 0, 0),
-    "easeintop": (1, 30, 0, 0), "easeinleft": (1, 30, 0, 0), "easeinright": (1, 30, 0, 0),
-    "easeoutbottom": (1, 30, 0, 0), "easeouttop": (1, 30, 0, 0), "easeoutleft": (1, 30, 0, 0),
-    "easeoutright": (1, 30, 0, 0), "moveinbottom": (1, 30, 0, 0), "moveouttop": (1, 30, 0, 0),
-    "zoomin": (1, 30, 0, 0), "zoomout": (1, 30, 0, 0), "pixellate": (1, 30, 0, 0), "blinds": (1, 30, 0, 0),
+    "dissolve": (1, 30, 0, 0), "fade": (2, 30, 0, 30), "vpunch": (3, 17, 10, 0), "hpunch": (4, 17, 15, 0),
+    "None": (0, 0, 0, 0), "move": (5, 30, 0, 0), "ease": (5, 30, 0, 3),
 }
+# familia MoveTransition: (5, cuadros, direccion de entrada | direccion de salida << 4, curva)
+for _name, _d in DIRECTIONS.items():
+    TRANSITION_NAMES[f"movein{_name}"] = (5, 30, _d, 0)
+    TRANSITION_NAMES[f"moveout{_name}"] = (5, 30, _d << 4, 0)
+    TRANSITION_NAMES[f"easein{_name}"] = (5, 30, _d, 1)
+    TRANSITION_NAMES[f"easeout{_name}"] = (5, 30, _d << 4, 2)
+TIME_WARPS = {"_ease_in_time_warp": 1, "_ease_out_time_warp": 2, "_ease_time_warp": 3}
+
+
+def is_light(color):
+    """Color de un Fade ('#fff', '#ffffff'...): claro = fundido por blanco."""
+    digits = color.lstrip("#")
+    if len(digits) in (3, 4):
+        digits = "".join(c * 2 for c in digits[:3])
+    try:
+        r, g, b = (int(digits[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return False
+    return (r + g + b) / 3 > 128
 
 
 def parse_transition(expr):
@@ -775,8 +906,14 @@ def parse_transition(expr):
         if name == "Dissolve" and nums:
             return (1, frames(nums[0]), 0, 0)
         if name == "Fade" and len(nums) >= 3:
-            return (2, frames(nums[0]), frames(nums[1]), frames(nums[2]))
-        if name in ("MoveTransition", "Move", "ease", "easeinbottom"):
+            color = next((k.value.value for k in tree.keywords if k.arg == "color" and isinstance(k.value, ast.Constant)), "#000")
+            return (6 if is_light(color) else 2, frames(nums[0]), frames(nums[1]), frames(nums[2]))
+        if name == "MoveTransition":
+            kw = {k.arg: ast.unparse(k.value) for k in tree.keywords}
+            enter = DIRECTIONS.get(kw.get("enter", "").replace("offscreen", ""), 0)
+            leave = DIRECTIONS.get(kw.get("leave", "").replace("offscreen", ""), 0)
+            return (5, frames(nums[0]) if nums else 30, enter | (leave << 4), TIME_WARPS.get(kw.get("time_warp", ""), 0))
+        if name in ("Move", "ease", "easeinbottom"):
             return (0, 0, 0, 0)
         if name in ("ImageDissolve", "AlphaDissolve", "CropMove", "PushMove", "Pixellate", "ComposeTransition"):
             return (1, frames(nums[0]) if nums else 30, 0, 0)

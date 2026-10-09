@@ -83,6 +83,10 @@ class VM:
                     cov.peak = (ch.name, pc, [p.images[im]["names"][0] for im in st["sprites"].values()
                                               if p.images[im]["recipe"]["op"] != "solid"])
                 self.note_image(a["image"])
+            elif name == "BACKGROUND":
+                self.check_image(a["image"], ch, pc)
+                st["bg"] = a["image"]
+                self.note_image(a["image"])
             elif name == "SHOW_RANDOM":
                 for i in range(a["count"]):
                     self.note_image(a["first"] + i)

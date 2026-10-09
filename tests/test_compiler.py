@@ -36,7 +36,12 @@ def test_paginate_splits_lines_and_pages():
 def test_parse_transition():
     assert parse_transition("Dissolve(1.5)") == (1, 90, 0, 0)
     assert parse_transition("Fade(1, 0, 1)") == (2, 60, 0, 60)
-    assert parse_transition("vpunch") == (3, 20, 0, 0)
+    assert parse_transition("vpunch") == (3, 17, 10, 0)
+    assert parse_transition("Fade(.5, 0, .5, color='#fff')") == (6, 30, 0, 30)
+    assert parse_transition("easeinbottom") == (5, 30, 4, 1)
+    assert parse_transition("easeoutright") == (5, 30, 2 << 4, 2)
+    assert parse_transition("moveoutleft") == (5, 30, 1 << 4, 0)
+    assert parse_transition("MoveTransition(0.5, time_warp=_ease_in_time_warp)") == (5, 30, 0, 1)
     assert parse_transition("None") == (0, 0, 0, 0)
     assert parse_transition("Frobnicate(2)") is None
 

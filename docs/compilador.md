@@ -40,14 +40,23 @@ Salidas en `build/data/`: `SCRIPT/Cxx.VNB` (un capítulo por archivo, 39) y `SCR
 - Se corrigió un error del original: `renpy.mark_image_seen('fangshooter')` usaba el nombre del elemento de galería en vez del de la imagen; ahora desbloquea su imagen.
 
 ## Limitaciones conocidas (se reportan como avisos al compilar)
+Todo el contenido visual del juego se conserva. Lo que queda son funciones de PC que no tienen sentido en consola:
 | Aviso | Veces | Efecto |
 |---|---|---|
-| `camera` (zoom/desenfoque de toda la escena) | 4 | se omite (capítulos 8 y 9) |
-| `show expression ... AlphaMask` | 4 | se omite (silueta en el extra x10 y capítulo 4) |
-| Cambio de imagen dentro de un ATL | ~11 | se conserva la imagen inicial |
-| Animaciones con más de 8 claves | 7 | se reducen a 8 |
-| `webbrowser.open`, `renpy.input` | 1 y 1 | funciones de PC, ignoradas |
-| `persistent.use_epilogue_menu = True` | 1 | el menú de epílogo no existe en el port |
-| Transición `moveoutleft` | 1 | se usa corte |
+| `webbrowser.open` | 1 | abre un video de YouTube en el original; se omite |
+| `renpy.input` | 1 | pide escribir un mensaje (capitulo 13D); se omite |
+| `persistent.use_epilogue_menu = True` | 1 | el menu de epilogo no existe en el port |
 | Texto sin traducir | 0 | - |
-| Líneas inalcanzables | 5 | mensaje de error de desarrollo en el capítulo 7 (código muerto del original) |
+| Lineas inalcanzables | 5 | mensaje de error de desarrollo en el capitulo 7 (codigo muerto del original) |
+
+Fidelidad de efectos (resuelta en la Fase 3):
+| Efecto del original | Como se conserva |
+|---|---|
+| `camera` con zoom y desplazamiento (cap. 8) | instruccion `CAMERA` |
+| `camera` con desenfoque (cap. 9) | variantes desenfocadas con disolver (`BACKGROUND` y `SHOW`) |
+| `AlphaMask` (cap. 4 y extra x10) | imagen pre-renderizada y recorte vertical animado |
+| Cambio de imagen dentro de un ATL (40 eventos) | eventos de la tabla ANIM |
+| Funcion de sonido dentro de un ATL | evento de sonido al azar |
+| `repeat N` y animaciones largas | se desenrollan, hasta 64 claves |
+| `easein*`, `easeout*`, `move`, `ease`, `MoveTransition` | transicion de movimiento (tipo 5) |
+| `Fade(color="#fff")` | fundido por blanco (tipo 6) |

@@ -15,6 +15,8 @@ OPS = {
     "TRANSITION": (0x13, "BHHH", ("type", "a", "b", "c")),
     "SHOW_RANDOM": (0x14, "BHBB", ("tag", "first", "count", "flags")),
     "MARK_SEEN": (0x15, "H", ("image",)),
+    "CAMERA": (0x16, "HhhHB", ("zoom", "tx", "ty", "time", "curve")),   # zoom 1/256; tx, ty en pixeles de 1920x1080 ya escalados
+    "BACKGROUND": (0x17, "H", ("image",)),                              # cambia solo el fondo (sin borrar sprites)
     "MUSIC_PLAY": (0x20, "HBB", ("track", "fade", "flags")),
     "MUSIC_STOP": (0x21, "B", ("fade",)),
     "AMBIENT_PLAY": (0x22, "BHB", ("slot", "sound", "fade")),
@@ -50,12 +52,13 @@ JUMP_OPS = {"JUMP", "JUMP_IF_FALSE", "CALL"}
 OPERATORS = ["==", "!=", "<", "<=", ">", ">=", "and", "or", "not", "+", "-", "*"]
 OP_CODE = {name: i for i, name in enumerate(OPERATORS)}
 
-TRANSITION_NAMES = {0: "cut", 1: "dissolve", 2: "fade", 3: "vpunch", 4: "hpunch"}
+TRANSITION_NAMES = {0: "cut", 1: "dissolve", 2: "fade", 3: "vpunch", 4: "hpunch", 5: "move", 6: "fade_white"}
 SAY_SPEAKER_NARRATOR = 0
 FLAG_FLIP = 1
 FLAG_HIDDEN = 2
 Z_KEEP = -128
 POS_NONE = 255
+POS_KEEP = 254   # SHOW que solo cambia la imagen y conserva posicion y animacion
 
 
 def size_of(name, args=None):

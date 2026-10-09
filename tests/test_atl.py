@@ -53,7 +53,18 @@ def test_zoom_and_rotation_encoding():
 
 def test_anim_table_layout():
     keys, _ = keys_for([("linear 1 xalign 1.0", [])])
-    table = atl.build_anim_table([(0, tuple(atl.encode_keys(keys)))])
+    table = atl.build_anim_table([(0, tuple(atl.encode_keys(keys)), ((30, 7, 1, 12),))])
     assert int.from_bytes(table[:4], "little") == 4
-    assert table[4] == 2 and table[5] == 0
-    assert len(table) == 4 + 2 + 2 * 14
+    assert table[4] == 2 and table[5] == 0 and table[6] == 1     # claves, flags, cambios
+    assert len(table) == 4 + 3 + 2 * 15 + 7
+
+
+def test_image_swap_and_finite_repeat():
+    keys, comp = keys_for([("block:", [("linear 0.5 xalign 1.0", []), ("linear 0.5 xalign 0.0", []), ("repeat 3", [])])])
+    assert not comp.loop
+    assert [round(k[0], 2) for k in keys] == [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+    comp2 = atl.Compiler(None, (1000.0, 1500.0), atl.State(1000.0, 1500.0), lambda m: None)
+    comp2.run([("pause 0.5", []), ('"anon happy" with Dissolve(.25)', []), ("function fang_kicks_a_car_workaround_sfx_fuck_renpy", [])],
+              0.0, atl.State(1000.0, 1500.0))
+    assert comp2.events[0] == ("img", 0.5, ("anon", "happy"), 15)
+    assert comp2.events[1][0] == "sfx" and len(comp2.events[1][2]) == 2

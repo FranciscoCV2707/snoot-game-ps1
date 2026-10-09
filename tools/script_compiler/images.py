@@ -137,6 +137,26 @@ class ImageTable:
         for key in self.recipes:
             self.tags.setdefault(key[0], []).append(key)
 
+    def add_blur(self, key, value):
+        """Variante desenfocada de una imagen (se renderiza en la Fase 4); `value` es el blur original de Ren'Py."""
+        newkey = key + (f"~blur{int(value)}",)
+        if newkey not in self.recipes:
+            recipe, flip = self.canonical(key)
+            blurred = {"op": "effect", "effect": "im.Blur", "src": recipe, "args": [value], "kwargs": {}}
+            if flip:
+                blurred = {"op": "flip", "src": blurred, "horizontal": True, "vertical": False}
+            self.recipes[newkey] = blurred
+        return newkey
+
+    def add_alphamask(self, content_words, mask_words):
+        """AlphaMask(contenido, mascara) estatico: una imagen con la forma de la mascara (se renderiza en la Fase 4)."""
+        content, mask = self.resolve(content_words), self.resolve(mask_words)
+        if content is None or mask is None:
+            return None
+        key = ("~mask",) + content + ("|",) + mask
+        self.recipes[key] = {"op": "alphamask", "content": self.canonical(content)[0], "mask": self.canonical(mask)[0]}
+        return key
+
     def resolve_layered(self, words, current_attrs=()):
         """Atributos efectivos de un layeredimage (por grupo: el pedido, el actual o el predeterminado)."""
         name = words[0]

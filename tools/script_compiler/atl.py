@@ -11,15 +11,25 @@ from functools import lru_cache
 
 from tools.script_compiler.rpy_parser import eval_number
 
+
+def parse_transition(expr):
+    from tools.script_compiler.lower import parse_transition as parse
+    return parse(expr)
+
 SCREEN_W, SCREEN_H = 1920.0, 1080.0
 FPS = 60
-MAX_KEYS = 8
+MAX_KEYS = 64
 DEFAULT_ALIGN = (0.5, 1.0)     # posicion de `show` sin `at`
 
 CURVE_LINEAR, CURVE_IN, CURVE_OUT, CURVE_INOUT = 0, 1, 2, 3
 WARPERS = {"linear": CURVE_LINEAR}
 NUMERIC = ("alpha", "zoom", "xzoom", "yzoom", "rotate")
-IGNORED_PROPS = {"subpixel", "perspective", "anchor", "around", "alignaround", "blur", "clockwise", "counterclockwise",
+# funciones de Python llamadas desde un ATL: nombre -> sonidos entre los que elige al azar
+ATL_SOUND_FUNCTIONS = {
+    "fang_kicks_a_car_workaround_sfx_fuck_renpy": ("audio/effects/carKick1.ogg", "audio/effects/carKick2.ogg"),
+}
+MAX_REPEAT = 40
+IGNORED_PROPS = {"rotate_pad", "transform_anchor", "subpixel", "perspective", "anchor", "around", "alignaround", "blur", "clockwise", "counterclockwise",
                  "circles", "knot", "crop", "size", "xsize", "ysize", "fit", "xoffset", "yoffset", "xysize", "events",
                  "additive", "offset", "xpan", "ypan", "delay", "yzoom"}
 def split_tokens(text):
@@ -80,6 +90,8 @@ class State:
         self.xpos = self.ypos = None
         self.xanchor = self.yanchor = 0.0
         self.alpha, self.zoom, self.xzoom, self.rotate = 1.0, 1.0, 1.0, 0.0
+        self.yzoom = 1.0
+        self.reveal = None
         self.tint = (1.0, 1.0, 1.0)
 
     def copy(self):
@@ -99,8 +111,13 @@ class State:
 
     def values(self):
         xa, ya = self.effective()
-        return {"x": xa, "y": ya, "alpha": self.alpha, "zoom": self.zoom, "xzoom": self.xzoom,
-                "rotate": self.rotate, "r": self.tint[0], "g": self.tint[1], "b": self.tint[2]}
+        clip = 1.0
+        zoom = self.zoom
+        if getattr(self, "reveal", None) is not None:
+            # mascara que crece en vertical: el contenido se ve solo en una franja central
+            clip = max(0.0, min(1.0, self.yzoom * self.reveal))
+        return {"x": xa, "y": ya, "alpha": self.alpha, "zoom": zoom, "xzoom": self.xzoom,
+                "rotate": self.rotate, "r": self.tint[0], "g": self.tint[1], "b": self.tint[2], "clip": clip}
 
 
 def px(value, screen):
@@ -153,7 +170,13 @@ class Compiler:
         self.segments = []     # (t0, t1, curve, valores finales, valores iniciales)
         self.loop = False
         self.duration = 0.0
-        self.swaps = 0
+        self.events = []       # cambios de imagen: (tiempo, palabras del nombre, cuadros de disolver)
+
+    @staticmethod
+    def repeat_count(text):
+        """`repeat` solo = infinito (None); `repeat N` = N veces."""
+        parts = text.split()
+        return int(float(parts[1])) if len(parts) > 1 else None
 
     def apply(self, state, prop, value):
         """Aplica una propiedad instantanea sobre el estado. Devuelve False si no se soporta."""
@@ -214,18 +237,44 @@ class Compiler:
             text, children = stmts[i]
             i += 1
             head = text.split()[0] if text.split() else ""
+            if re.match(r"(size|crop|fit)\s*\(", text):
+                continue    # tamano/recorte del contenedor: no cambia lo que se ve
             if text[:1] in "\"'":
-                self.swaps += 1      # cambio de imagen dentro del ATL: se conserva la imagen inicial
+                m = re.match(r"""^(?:"([^"]*)"|'([^']*)')(?:\s+with\s+(.+))?$""", text)
+                if not m:
+                    self.warn(f"cambio de imagen no reconocido: {text[:40]}")
+                    continue
+                words = tuple((m.group(1) or m.group(2)).split())
+                frames = 0
+                if m.group(3):
+                    spec = parse_transition(m.group(3))
+                    frames = spec[1] if spec and spec[0] == 1 else 0
+                self.events.append(("img", t, words, frames))
                 continue
             if head == "repeat":
-                self.loop = True
+                count = self.repeat_count(text)
+                if count is None:
+                    self.loop = True
+                else:   # repeat N en una secuencia: se repite lo anterior N-1 veces mas
+                    for _ in range(min(count, MAX_REPEAT) - 1):
+                        t, state = self.run(stmts[:i - 1], t, state)
                 continue
             if head in ("block:", "block"):
-                t, state = self.run(children, t, state)
-                if i < len(stmts) and stmts[i][0].split()[0] == "repeat":
+                body = list(children)
+                rep = None
+                if body and body[-1][0].split()[0] == "repeat":
+                    rep = body.pop()[0]
+                elif i < len(stmts) and stmts[i][0].split()[0] == "repeat":
+                    rep = stmts[i][0]
+                    i += 1
+                count = self.repeat_count(rep) if rep else 1
+                if rep and count is None:
+                    t, state = self.run(body, t, state)
                     self.loop = True
                     self.duration = t
-                    i += 1
+                else:
+                    for _ in range(min(count or 1, MAX_REPEAT)):
+                        t, state = self.run(body, t, state)
                 continue
             if head == "parallel:":
                 group = [children]
@@ -253,7 +302,14 @@ class Compiler:
             if head == "pause":
                 t += eval_number(text.split(None, 1)[1])
                 continue
-            if head in ("on", "function", "contains", "time", "animation", "pass", "lock", "event"):
+            if head == "function":
+                name = text.split(None, 1)[1].strip()
+                if name in ATL_SOUND_FUNCTIONS:
+                    self.events.append(("sfx", t, ATL_SOUND_FUNCTIONS[name]))
+                else:
+                    self.warn(f"funcion de ATL desconocida: {name}")
+                continue
+            if head in ("on", "contains", "time", "animation", "pass", "lock", "event"):
                 if head not in ("pass", "animation"):
                     self.warn(f"ATL no soportado: {head}")
                 continue
@@ -343,7 +399,7 @@ def encode_keys(keys):
                     int(round(max(0, min(1, v["alpha"])) * 255)), curve,
                     int(round(max(0, min(255 / 64, v["zoom"])) * 64)), int(round(max(-1.98, min(1.98, v["xzoom"])) * 64)),
                     rot, int(round(min(255, v["r"] * 128))), int(round(min(255, v["g"] * 128))),
-                    int(round(min(255, v["b"] * 128)))))
+                    int(round(min(255, v["b"] * 128))), int(round(max(0, min(1, v["clip"])) * 255))))
     return out
 
 
@@ -353,32 +409,34 @@ def decimate(keys):
         scores = []
         for i in range(1, len(keys) - 1):
             a, b, c = keys[i - 1][1], keys[i][1], keys[i + 1][1]
-            dev = sum(abs(b[f] - (a[f] + c[f]) / 2) for f in ("x", "y", "zoom", "alpha"))
+            dev = sum(abs(b[f] - (a[f] + c[f]) / 2) for f in ("x", "y", "zoom", "alpha", "clip"))
             scores.append((dev, i))
         scores.sort()
         del keys[scores[0][1]]
     return keys
 
 
-def compile_anim(lowerer, node, extra_transforms):
-    """Devuelve el id (1-based) de la animacion de un `show`, o 0 si no tiene."""
-    sequences = []
-    for name in extra_transforms:
-        sequences.append(lowerer.p.transforms[name])
+def compile_anim(lowerer, node, extra_transforms, reveal=None, atl_first=False):
+    """Compila el ATL de un `show`. Devuelve (id 1-based de animacion o 0, clave final de imagen o None).
+
+    reveal: proporcion alto de la mascara / alto del contenido cuando la mascara crece en vertical (AlphaMask).
+    """
+    sequences = [lowerer.p.transforms[name] for name in extra_transforms]
     if node.atl:
-        sequences.append(node.atl)
+        sequences.insert(0, node.atl) if atl_first else sequences.append(node.atl)
     if not sequences:
-        return 0
+        return 0, None
     key = lowerer.reg.last_key.get(node.tag)
     w, h = image_size(lowerer.p, key) if key else (SCREEN_W, SCREEN_H)
     start = State(w, h)
+    start.reveal = reveal
     pos_name = next((n for n in node.at if n in lowerer.p.positions), None)
     previous = lowerer.reg.pos_state.get(node.tag)
     if pos_name:
         info = lowerer.p.position_info[lowerer.p.positions[pos_name]]
         start.xalign, start.yalign = info["xalign"], info["yalign"]
     elif previous is not None:
-        start.__dict__.update({k: v for k, v in previous.items() if k not in ("w", "h")})
+        start.__dict__.update({k: v for k, v in previous.items() if k not in ("w", "h", "reveal")})
     warnings = []
     comp = Compiler(lowerer.p, (w, h), start, warnings.append)
     state = start.copy()
@@ -388,37 +446,48 @@ def compile_anim(lowerer, node, extra_transforms):
     lowerer.reg.pos_state[node.tag] = {k: v for k, v in state.__dict__.items()}
     for w_ in sorted(set(warnings)):
         lowerer.warn(node, w_)
-    if comp.swaps:
-        lowerer.warn(node, "cambio de imagen dentro de un ATL ignorado (se conserva la imagen inicial)")
-    if not comp.segments:
-        return 0
-    initial = start.values()
-    keys = quantize_keys(comp.segments, initial, comp.loop, comp.duration)
+
+    swaps, final_key, prev = [], None, key
+    for ev in sorted(comp.events, key=lambda e: e[1]):
+        if ev[0] == "sfx":
+            ids = lowerer.reg.audio_group(ev[2])
+            swaps.append((int(round(ev[1] * FPS)), ids[0], 2, len(ids)))
+            continue
+        _, ev_t, words, dissolve = ev
+        new_key = lowerer.resolve_swap(words, node.tag, prev, node)
+        iid, flip = lowerer.reg.image_id(new_key)
+        swaps.append((int(round(ev_t * FPS)), iid, 1 if flip else 0, dissolve))
+        prev = final_key = new_key
+    if not comp.segments and not swaps:
+        return 0, final_key
+    keys = quantize_keys(comp.segments, start.values(), comp.loop, comp.duration)
     if len(keys) > MAX_KEYS:
         lowerer.warn(node, f"animacion con {len(keys)} fotogramas clave, se reduce a {MAX_KEYS}")
         keys = decimate(keys)
-    encoded = encode_keys(keys)
-    flags = 1 if comp.loop else 0
-    anim = (flags, tuple(encoded))
+    if len(swaps) > 255:
+        lowerer.warn(node, "demasiados cambios de imagen en un ATL, se recortan a 255")
+        swaps = swaps[:255]
+    anim = (1 if comp.loop else 0, tuple(encode_keys(keys)), tuple(swaps))
     anims = lowerer.ir.anims
     if anim in anims:
-        return anims.index(anim) + 1
+        return anims.index(anim) + 1, final_key
     if len(anims) >= 65535:
         lowerer.warn(node, "demasiadas animaciones distintas en el capitulo")
-        return 0
+        return 0, final_key
     anims.append(anim)
-    return len(anims)
+    return len(anims), final_key
 
 
-KEY_FMT = "<HhhBBBbbBBB"   # 14 bytes por fotograma clave
+KEY_FMT = "<HhhBBBbbBBBB"   # 15 bytes por fotograma clave
+SWAP_FMT = "<HHBH"          # 7 bytes: tiempo, imagen, volteo, cuadros de disolver
 
 
 def build_anim_table(anims):
-    """Tabla ANIM: u32 offsets[n] relativos a la tabla, luego cada animacion (n, flags, claves de 14 bytes)."""
+    """Tabla ANIM: u32 offsets[n] relativos a la tabla; cada animacion: n claves, flags, n cambios de imagen, claves, cambios."""
     blobs = []
-    for flags, keys in anims:
-        body = b"".join(struct.pack(KEY_FMT, *k) for k in keys)
-        blobs.append(struct.pack("<BB", len(keys), flags) + body)
+    for flags, keys, swaps in anims:
+        body = b"".join(struct.pack(KEY_FMT, *k) for k in keys) + b"".join(struct.pack(SWAP_FMT, *sw) for sw in swaps)
+        blobs.append(struct.pack("<BBB", len(keys), flags, len(swaps)) + body)
     offsets, pos = [], 4 * len(blobs)
     for b in blobs:
         offsets.append(pos)

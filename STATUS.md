@@ -35,7 +35,8 @@ Ultima actualizacion: 2026-10-08
 - [x] ATL -> fotogramas clave (2,716 animaciones), texto partido en lineas y paginas
 - [x] Desensamblador y simulador con exploracion automatica de rutas
 - [x] Cobertura: 4 finales, 93 de 93 etiquetas, 9 extras, 203 de 203 de galeria, 0 errores
-- [x] 33 tests; docs/compilador.md y build/reports/cobertura.md
+- [x] Efectos fieles: camera (zoom y desenfoque), AlphaMask, cambios de imagen y sonidos dentro de ATL, transiciones de movimiento y fundido por blanco
+- [x] 34 tests; docs/compilador.md y build/reports/cobertura.md
 
 ## Siguiente
 - [ ] Tu revision de docs/decisiones.md, docs/bytecode.md y docs/presupuesto-memoria.md
