@@ -30,7 +30,7 @@ El plan decia "bloqueados hasta terminar todas las rutas". El juego original des
 - Lineas de dialogo en `script/`: 14,691. Un bit por linea son unos 1.8 KB en la memory card.
 - La galeria usa `renpy.seen_image(nombre)`: una imagen esta desbloqueada si alguna vez se mostro con `show` o `scene`. El motor debe marcar un bit por cada imagen mostrada.
 - Galeria (`src/gallery_dataset.json`): CG 108, Fullbody 20, Backgrounds 72, Lewd 3 (condicionada a `persistent.lewd`), Animations 0. Total 203 elementos. Tambien hay 28 llamadas a `renpy.mark_image_seen` que marcan imagenes sin mostrarlas.
-- Hay 1 video: `images/animations/fang tail.webm` (galeria; conviene descartarlo o convertirlo a una animacion simple).
+- Hay 1 video: `images/animations/fang tail.webm` (VP9, 1920x1080, 120 fotogramas, 5 s en bucle). Se usa en el capitulo 5 y en la galeria. Decision D3: se convierte a animacion por fotogramas.
 
 ### Traduccion al espanol
 - Cobertura de dialogo: 14,694 bloques traducidos contra 14,691 lineas de dialogo; ningun bloque vacio. Los 63 bloques "iguales al original" son interjecciones (`Hmmm...`) o nombres, no faltantes reales.

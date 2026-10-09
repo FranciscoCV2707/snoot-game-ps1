@@ -16,10 +16,13 @@
 **Motivo:** el CD solo reproduce un stream XA a la vez; música y ambiente suenan juntos en la historia (unos 210 usos).
 **Alternativa descartada:** ambientes en XA con silenciar la música (cambia la escena sonora).
 
-## 2026-10-08 - D3: Video `fang tail.webm` descartado
-**Decisión:** no se porta el video. Su entrada en la galería se omite (o se reemplaza por una imagen fija si existe).
-**Motivo:** requiere el formato STR/MDEC y ocupa espacio y tiempo de motor por un solo extra de galería.
-**Revisar:** si sobra tiempo al final del proyecto.
+## 2026-10-08 - D3: Video `fang tail.webm` como animación por fotogramas
+**Decisión:** no se usa video real (STR/MDEC). Se convierte a una animación en bucle de pocos fotogramas, tratada como una imagen animada por el motor.
+- Original: VP9, 1920x1080, 120 fotogramas a 23.98 fps (5 s), en bucle. Se usa en el capítulo 5 (`show fang_tail_movie`) y en la galería (`fang_tail_movie`, miniatura aparte).
+- Objetivo inicial: 8 a 16 fotogramas a 6 a 10 fps, en 8 bits con paleta, a la resolución de fondo elegida. Se afina en la Fase 4 viendo cuál se ve fluida sin pasar de ~1 MB de VRAM/disco.
+- Si el área animada es pequeña (solo la cola), se animan solo esos recortes sobre un fondo fijo para ahorrar VRAM.
+**Motivo:** mantiene el efecto sin el costo de MDEC; el motor ya necesita cambiar texturas por tiempo.
+**Impacto:** el bytecode necesita una instrucción de animación simple (lista de fotogramas, tiempo por fotograma, bucle). Se incluye en la Fase 2 (`docs/bytecode.md`).
 
 ## Pendiente (Fase 2)
 - Resolución de pantalla y formato de fondos (prototipos).

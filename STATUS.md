@@ -30,7 +30,7 @@ Ultima actualizacion: 2026-10-08
 ## Decisiones tomadas (ver docs/decisiones.md)
 - [x] D1: capitulos extra con la logica progresiva del original
 - [x] D2: musica en XA, ambientes en VAG cortos en bucle
-- [x] D3: video `fang tail.webm` descartado
+- [x] D3: video `fang tail.webm` convertido a animacion por fotogramas (8-16 fotogramas en bucle)
 
 ## Fase 2 en curso
 - [ ] Prototipo de resolucion y formato de fondos
