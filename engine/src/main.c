@@ -149,7 +149,7 @@ int main(int argc, const char *argv[])
 			font_draw(LAYER_TEXT, 8, BOX_Y + 2, lines[line].name, lines[line].r, lines[line].g, lines[line].b);
 			text_draw(&run, LAYER_TEXT, 8, BOX_Y + 16, 128, 128, 128);
 			if (text_page_done(&run) && ((video_frames() / 20) & 1))
-				video_triangle_down(LAYER_TEXT, 304, SCREEN_H - 12, 9, 6, 255, 255, 255);
+				video_triangle_down(LAYER_TEXT, 290, SCREEN_H - 24, 10, 7, 255, 255, 255);
 		}
 		video_unclip();
 

@@ -21,3 +21,6 @@ Estado: Fase 6 (demo del motor base). Se construye con `python -m tools.engine.b
 
 ## Controles de la demo
 X avanza o completa el texto, Cuadrado oculta la caja, Select muestra FPS y numero de linea.
+
+## Zona segura
+La interfaz (indicadores, iconos) se mantiene a unos 10 pixeles de los bordes: algunos emuladores y televisores recortan las esquinas. El triangulo de "presiona X" se vio cortado en (304, 228) y quedo bien en (290, 216).
