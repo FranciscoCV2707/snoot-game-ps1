@@ -2,7 +2,7 @@
 
 Ultima actualizacion: 2026-10-08
 
-## Fase actual: 5 hecha (pendiente de tu escucha); siguiente: 6 - Motor PS1
+## Fase actual: 6 demo hecha (pendiente de probar); siguiente: 7 - interprete del bytecode
 
 ## Hecho
 ### Fase 0 - Entorno (terminada)
@@ -53,12 +53,17 @@ Ultima actualizacion: 2026-10-08
 - [x] audio_index.bin, docs/formato-audio.md, 44 tests
 - [ ] Tu escucha: experiments/xa_test (disco con el MUSIC.XA real)
 
+### Fase 6 - Motor PS1: base (demo hecha, pendiente de probar en emulador)
+- [x] engine/: video con doble buffer y capas, lectura de CD, LZ4, carga de imagenes IMG1, fuente de 4 bits con acentos, maquina de escribir, control
+- [x] tools/engine: FONT.BIN (248 glifos, normal y cursiva) y disco de la demo
+- [x] Compila sin avisos; SNOOT.EXE de 36 KB
+- [ ] Tu prueba: build/engine/snoot_demo.cue en DuckStation y PCSX-Redux (fondo, personaje, 3 lineas, X avanza)
+
 ## Siguiente
 - [ ] Tu revision de docs/decisiones.md, docs/bytecode.md y docs/presupuesto-memoria.md
-- [ ] Fase 6 - Motor PS1: base
+- [ ] Fase 7 - Motor PS1: interprete y escenas
 
 ## Pendiente (fases siguientes)
-- [ ] Fase 6 - Motor PS1: base
 - [ ] Fase 7 - Motor PS1: interprete y escenas
 - [ ] Fase 8 - Motor PS1: audio, transiciones, guardado y menus
 - [ ] Fase 9 - Construccion del CD y build automatico

@@ -76,7 +76,13 @@ def paginate(text, measure, width, max_lines):
     """
     tokens = []
     cur = ""
-    for ch in text:
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ord(ch) in (STYLE, WAIT, SPEED, SIZE) and i + 1 < len(text):
+            cur += ch + text[i + 1]          # el argumento de un codigo nunca se parte (puede valer 32, 10 u 11)
+            i += 2
+            continue
         if ch == " ":
             tokens.append(cur)
             cur = ""
@@ -86,6 +92,7 @@ def paginate(text, measure, width, max_lines):
             cur = ""
         else:
             cur += ch
+        i += 1
     tokens.append(cur)
 
     out, line, lines_used, pages = [], "", 1, 1
