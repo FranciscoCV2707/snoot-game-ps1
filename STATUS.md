@@ -35,7 +35,7 @@ Ultima actualizacion: 2026-10-08
 ## Fase 2 en curso
 - [x] Prototipo de resolucion y formato de fondos (build/reports/proto/index.html)
 - [x] D4: 320x240 (eleccion del usuario), D5: 8 bits con dither ordenado, D6: fuente 13 px y caja de 3 lineas
-- [ ] Prueba tecnica XA + carga de datos del CD
+- [x] Prueba tecnica XA + carga de datos del CD (D7: pausar, cargar por lotes contiguos y reanudar; hueco ~0.6 s por lote chico)
 - [ ] Fuente, compresion, formato de memory card
 - [ ] docs/bytecode.md, docs/presupuesto-memoria.md
 
