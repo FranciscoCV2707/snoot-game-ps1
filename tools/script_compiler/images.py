@@ -9,7 +9,7 @@ import json
 import re
 from pathlib import Path
 
-from tools.script_compiler.rpy_parser import ImageDef, Py, flatten, parse_file
+from tools.script_compiler.rpy_parser import ImageDef, LayeredImage, Py, flatten, parse_file
 
 GAME = Path(__file__).resolve().parents[2] / "original" / "game"
 IMAGE_EXTS = {".webp", ".png", ".jpg", ".jpeg"}
@@ -105,13 +105,52 @@ def defined_images():
     return table
 
 
+def layered_images():
+    """layeredimage de image_definitions: nombre -> {always: [...], groups: [(grupo, {atributo: imagen}, defecto)]}."""
+    out = {}
+    for node in flatten(parse_file(GAME / "src" / "image_definitions.rpy", "src/image_definitions.rpy")):
+        if not isinstance(node, LayeredImage):
+            continue
+        spec = {"always": [], "groups": []}
+        for text, children in node.body:
+            if text.startswith("always"):
+                spec["always"].extend(c[0].strip("\"'") for c in children if c[0][:1] in "\"'")
+            elif text.startswith("group"):
+                attrs, default = {}, None
+                for ctext, cchildren in children:
+                    am = re.match(r"attribute\s+(\w+)(\s+default)?\s*:", ctext)
+                    if am and cchildren:
+                        attrs[am.group(1)] = cchildren[0][0].strip("\"'")
+                        if am.group(2):
+                            default = am.group(1)
+                spec["groups"].append((text.split()[1].rstrip(":"), attrs, default))
+        out[node.name] = spec
+    return out
+
+
 class ImageTable:
     def __init__(self):
         self.recipes = {**auto_images(), **BUILTIN_NAMES}
         self.recipes.update(defined_images())
+        self.layered = layered_images()
         self.tags = {}
         for key in self.recipes:
             self.tags.setdefault(key[0], []).append(key)
+
+    def resolve_layered(self, words, current_attrs=()):
+        """Atributos efectivos de un layeredimage (por grupo: el pedido, el actual o el predeterminado)."""
+        name = words[0]
+        spec = self.layered[name]
+        wanted, current = set(words[1:]), set(current_attrs)
+        chosen, layers = [], list(spec["always"])
+        for group, attrs, default in spec["groups"]:
+            pick = next((a for a in attrs if a in wanted), None) or next((a for a in attrs if a in current), None) or default
+            if pick:
+                chosen.append(pick)
+                layers.append(attrs[pick])
+        key = (name, *sorted(chosen))
+        self.recipes[key] = {"op": "layered", "layers": [name_key(layer.split()) for layer in layers]}
+        return key
 
     def canonical(self, key, _depth=0):
         """Devuelve (receta base, volteo): resuelve referencias y envolturas de volteo."""
@@ -143,9 +182,7 @@ class ImageTable:
             return None
         current = set(current_attrs)
         candidates.sort(key=lambda k: (-len(current & set(k[1:])), len(k)))
-        best = candidates[0]
-        ties = [c for c in candidates if (len(current & set(c[1:])), len(c)) == (len(current & set(best[1:])), len(best))]
-        return best if len(ties) == 1 else None
+        return min(candidates, key=lambda k: (-len(current & set(k[1:])), len(k), k))
 
 
 def main():

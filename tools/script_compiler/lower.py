@@ -1,0 +1,743 @@
+"""Reduccion del AST de Ren'Py a instrucciones del bytecode VNB (Fase 3, etapa 4).
+
+Recorre cada capitulo siguiendo el flujo (etiquetas, menus, if) y lleva la cuenta de que imagen muestra cada
+tag, para resolver atributos como lo hace Ren'Py (`show anon happy` conserva el volteo anterior).
+"""
+import ast
+import re
+from dataclasses import dataclass, field
+
+from tools.script_compiler import atl as atl_module
+from tools.script_compiler import rpy_parser as rp
+from tools.script_compiler import textfmt
+from tools.script_compiler.opcodes import FLAG_FLIP, OP_CODE, POS_NONE, Z_KEEP
+
+MUSIC_CHANNELS = {"music": 0, "music1": 0, "music2": 0}
+AMBIENT_SLOTS = {"ambient": 0, "ambient1": 1, "ambient2": 2, "ambient3": 3}
+SFX_CHANNELS = {"sound", "audio"}
+VOLUME_CHANNELS = {"music": 0, "ambient": 1, "ambient1": 2, "ambient2": 3, "ambient3": 4, "sound": 5, "audio": 5}
+SPECIAL_TEXTSCROLL, SPECIAL_CREDITS = 1, 2
+SHOW_RANDOM_FIRST = ("text1",)
+
+
+class CompileError(Exception):
+    pass
+
+
+@dataclass
+class Inst:
+    op: str
+    args: dict = field(default_factory=dict)
+    line: int = 0
+    file: str = ""
+
+
+class VState:
+    """Estado de imagenes en un punto del flujo: por tag, las imagenes posibles (alternativas por camino)."""
+
+    def __init__(self, tags=None, z=None):
+        self.tags = {k: set(v) for k, v in (tags or {}).items()}
+        self.z = dict(z or {})
+
+    def copy(self):
+        return VState(self.tags, self.z)
+
+    def merge(self, other):
+        if other is None:
+            return self
+        for tag, keys in other.tags.items():
+            self.tags.setdefault(tag, set()).update(keys)
+        for tag, z in other.z.items():
+            self.z.setdefault(tag, z)
+        return self
+
+
+def merge_states(states):
+    live = [s for s in states if s is not None]
+    if not live:
+        return None
+    out = live[0].copy()
+    for s in live[1:]:
+        out.merge(s)
+    return out
+
+
+class Registry:
+    """IDs compartidos entre capitulos: imagenes, audio, variables, posiciones."""
+
+    def __init__(self, project):
+        self.project = project
+        self.images = [None]       # id 0 = sin imagen
+        self._image_ids = {}
+        self.audio = []
+        self._audio_ids = {}
+        self.vars = {}
+        self.tag_ids = {}
+        self.last_key = {}
+
+    def image_id(self, key):
+        recipe, flip = self.project.images.canonical(key)
+        sig = repr(sorted(recipe.items(), key=lambda kv: kv[0]))
+        if sig not in self._image_ids:
+            self._image_ids[sig] = len(self.images)
+            self.images.append({"recipe": recipe, "names": []})
+        iid = self._image_ids[sig]
+        name = " ".join(key)
+        if name not in self.images[iid]["names"]:
+            self.images[iid]["names"].append(name)
+        return iid, flip
+
+    def audio_id(self, path):
+        real = self.project.audio_path(path)
+        if real is None:
+            raise CompileError(f"audio no encontrado: {path}")
+        if real not in self._audio_ids:
+            self._audio_ids[real] = len(self.audio)
+            self.audio.append({"path": real})
+        return self._audio_ids[real]
+
+    def var(self, name):
+        if name not in self.vars:
+            if len(self.vars) >= 64:
+                raise CompileError("mas de 64 variables")
+            self.vars[name] = len(self.vars)
+        return self.vars[name]
+
+    def tag(self, name):
+        if name not in self.tag_ids:
+            if len(self.tag_ids) >= 250:
+                raise CompileError("demasiados tags")
+            self.tag_ids[name] = len(self.tag_ids) + 1
+        return self.tag_ids[name]
+
+
+class ChapterIR:
+    def __init__(self, chapter):
+        self.chapter = chapter
+        self.insts = []
+        self.strings = []        # [{"id": id de Ren'Py o None, "text": cadena con codigos}]
+        self.warnings = []
+        self.anims = []
+        self.dropped_tags = {}
+
+
+def tenths(seconds):
+    return int(max(0, min(255, round((seconds or 0.0) * 10))))
+
+
+def frames(seconds):
+    return int(max(0, min(65535, round(seconds * 60))))
+
+
+class Lowerer:
+    def __init__(self, project, registry, chapter):
+        self.p = project
+        self.reg = registry
+        self.ch = chapter
+        self.ir = ChapterIR(chapter)
+        self.label = None
+        self.pending = {}
+        self.dry = 0
+        self.counter = 0
+        self.pyenv = {}
+
+    # -- utilidades ---------------------------------------------------------
+    def emit(self, _name, line=0, **args):
+        if not self.dry:
+            self.ir.insts.append(Inst(_name, args, line, self.ch.name))
+
+    def warn(self, node, msg):
+        if not self.dry:
+            self.ir.warnings.append(f"{self.ch.name}:{getattr(node, 'line', 0)}: {msg}")
+
+    def new_label(self, hint):
+        self.counter += 1
+        return f".{hint}{self.counter}"
+
+    def add_string(self, tid, text):
+        if self.dry:
+            return 0
+        converted, dropped = textfmt.convert(text)
+        for d in dropped:
+            self.ir.dropped_tags[d] = self.ir.dropped_tags.get(d, 0) + 1
+        self.ir.strings.append({"id": tid, "text": converted})
+        return len(self.ir.strings) - 1
+
+    # -- punto de entrada ---------------------------------------------------
+    def run(self):
+        state = VState()
+        state = self.block(self.ch.nodes, state)
+        if state is not None:
+            self.emit("RETURN")
+        return self.ir
+
+    def block(self, nodes, state):
+        for node in nodes:
+            if state is None and not isinstance(node, rp.Label):
+                continue  # codigo inalcanzable hasta la proxima etiqueta
+            state = self.node(node, state)
+        return state
+
+    def node(self, n, state):
+        method = getattr(self, "n_" + type(n).__name__, None)
+        if method is None:
+            raise CompileError(f"{n.file}:{n.line}: nodo sin soporte {type(n).__name__}")
+        return method(n, state)
+
+    # -- flujo ----------------------------------------------------------------
+    def n_Label(self, n, state):
+        incoming = merge_states([state, self.pending.pop(n.name, None)])
+        self.label = n.name
+        self.emit("LABEL", n.line, name=n.name)
+        state = incoming if incoming is not None else VState()
+        return self.block(n.body, state)
+
+    def n_Pass(self, n, state):
+        return state
+
+    def n_Return(self, n, state):
+        self.emit("RETURN", n.line)
+        return None
+
+    def jump_to(self, target, state, n, mode_jump):
+        chapter = self.p.label_chapter.get(target)
+        if chapter is None:
+            raise CompileError(f"{n.file}:{n.line}: etiqueta desconocida {target}")
+        if chapter != self.ch.index:
+            self.emit("LOAD_CHAPTER", n.line, chapter=chapter, entry=target, mode=1 if mode_jump else 0)
+        else:
+            self.emit("JUMP" if mode_jump else "CALL", n.line, target=target)
+            if mode_jump:
+                self.pending[target] = merge_states([self.pending.get(target), state])
+
+    def n_Jump(self, n, state):
+        if n.expression:
+            raise CompileError(f"{n.file}:{n.line}: jump expression sin soporte")
+        self.jump_to(n.target, state, n, True)
+        return None
+
+    def n_Call(self, n, state):
+        if n.expression:
+            raise CompileError(f"{n.file}:{n.line}: call expression sin soporte")
+        self.jump_to(n.target, state, n, False)
+        return state
+
+    def n_CallScreen(self, n, state):
+        if n.name == "textscroll":
+            self.emit("SPECIAL", n.line, id=SPECIAL_TEXTSCROLL)
+        else:
+            self.warn(n, f"call screen {n.name} ignorada")
+        return state
+
+    def n_Camera(self, n, state):
+        self.warn(n, "camera (zoom/desenfoque de toda la escena) ignorada")
+        return state
+
+    def n_Menu(self, n, state):
+        end = self.new_label("menuend")
+        branch_labels = [self.new_label("opt") for _ in n.choices]
+        if n.caption:
+            tr = self.p.tr.string(n.caption) or n.caption
+            self.emit("SAY", n.line, speaker=0, text=self.add_string(None, tr))
+        entries = []
+        for (text, cond, _), lbl in zip(n.choices, branch_labels):
+            es = self.p.tr.string(text)
+            if es is None:
+                raise CompileError(f"{n.file}:{n.line}: opcion de menu sin traduccion: {text}")
+            entries.append((self.add_string(None, es), lbl))
+        self.emit("MENU", n.line, flags=0, choices=entries)
+        outs = []
+        for (text, cond, body), lbl in zip(n.choices, branch_labels):
+            self.emit("LABEL", n.line, name=lbl)
+            out = self.block(body, state.copy())
+            if out is not None:
+                self.emit("JUMP", n.line, target=end)
+            outs.append(out)
+        self.emit("LABEL", n.line, name=end)
+        return merge_states(outs)
+
+    def n_If(self, n, state):
+        end = self.new_label("ifend")
+        outs = []
+        has_else = False
+        for cond, body in n.branches:
+            nxt = self.new_label("else")
+            if cond is not None:
+                self.expr(cond, n)
+                self.emit("JUMP_IF_FALSE", n.line, target=nxt)
+            else:
+                has_else = True
+            out = self.block(body, state.copy())
+            if out is not None:
+                self.emit("JUMP", n.line, target=end)
+            outs.append(out)
+            self.emit("LABEL", n.line, name=nxt)
+        if not has_else:
+            outs.append(state.copy())
+        self.emit("LABEL", n.line, name=end)
+        return merge_states(outs)
+
+    def n_While(self, n, state):
+        top, end = self.new_label("while"), self.new_label("wend")
+        self.dry += 1
+        probe = self.block(n.body, state.copy())
+        self.dry -= 1
+        body_state = merge_states([state, probe]) or state
+        self.emit("LABEL", n.line, name=top)
+        self.expr(n.cond, n)
+        self.emit("JUMP_IF_FALSE", n.line, target=end)
+        out = self.block(n.body, body_state.copy())
+        self.emit("JUMP", n.line, target=top)
+        self.emit("LABEL", n.line, name=end)
+        return merge_states([state, out])
+
+    # -- dialogo --------------------------------------------------------------
+    def n_Say(self, n, state):
+        who = n.who
+        if who is not None and who not in self.p.speakers:
+            if re.fullmatch(r"\w+", who):
+                raise CompileError(f"{n.file}:{n.line}: hablante desconocido {who}")
+            self.p.add_speaker(who)   # nombre escrito como texto ("Trevor & Tana")
+        tid = n.text_id or self.p.tr.lookup(self.label, n.text)
+        es = self.p.tr.dialogue(tid) if tid else None
+        if es is None:
+            if n.text.strip() == "":
+                es = ""
+            else:
+                raise CompileError(f"{n.file}:{n.line}: dialogo sin traduccion: {n.text[:50]}")
+        if n.with_:
+            self.transition(n.with_, n)
+        self.emit("SAYX" if n.extend else "SAY", n.line, speaker=self.p.speakers.get(who, 0), text=self.add_string(tid, es))
+        return state
+
+    def n_Window(self, n, state):
+        mode = {"hide": 0, "auto": 1, "show": 2}.get(n.kind, 1)
+        self.emit("TEXTBOX", n.line, mode=mode)
+        return state
+
+    def n_Pause(self, n, state):
+        self.emit("PAUSE", n.line, frames=0 if n.seconds is None else frames(n.seconds), flags=1)
+        return state
+
+    def n_With(self, n, state):
+        self.transition(n.trans, n)
+        return state
+
+    # -- imagenes -------------------------------------------------------------
+    def transition(self, expr, node):
+        spec = parse_transition(expr)
+        if spec is None:
+            self.warn(node, f"transicion no soportada, se usa corte: {expr}")
+            spec = (0, 0, 0, 0)
+        self.emit("TRANSITION", node.line, type=spec[0], a=spec[1], b=spec[2], c=spec[3])
+
+    def resolve(self, words, tag, state, node):
+        """Elige la imagen para `show` segun el estado; devuelve la clave de imagen."""
+        current = state.tags.get(tag, set()) if tag else set()
+        if not current and tag in self.reg.last_key:
+            current = {self.reg.last_key[tag]}   # Ren'Py recuerda los atributos de un tag aunque se oculte o cambie la escena
+        if words[0] in self.p.images.layered:
+            attrs = next(iter(current))[1:] if current else ()
+            return self.p.images.resolve_layered(words, attrs)
+        keys = set()
+        for cur in (current or {()}):
+            attrs = cur[1:] if cur else ()
+            if len(words) == 1 and cur and words[0] == cur[0]:
+                keys.add(cur)
+            else:
+                key = self.p.images.resolve(words, attrs)
+                if key is None and len(words) == 1 and not cur:
+                    key = None
+                keys.add(key)
+        if None in keys and len(keys) > 1:
+            keys.discard(None)
+        if keys == {None}:
+            raise CompileError(f"{node.file}:{node.line}: imagen no resuelta: {' '.join(words)} (tag {tag})")
+        if len(keys) > 1:
+            self.warn(node, f"imagen ambigua {' '.join(words)}: {sorted(' '.join(k) for k in keys)}")
+        return sorted(keys, key=lambda k: (len(k), k))[0]
+
+    def n_Scene(self, n, state):
+        key = self.p.images.resolve(n.image)
+        if key is None:
+            raise CompileError(f"{n.file}:{n.line}: fondo no resuelto: {' '.join(n.image)}")
+        iid, flip = self.reg.image_id(key)
+        self.emit("SCENE", n.line, image=iid)
+        state = VState()
+        state.tags["_scene"] = {key}
+        if n.with_:
+            self.transition(n.with_, n)
+        return state
+
+    def n_Show(self, n, state):
+        if n.image[0] == "expression":
+            self.warn(n, "show expression (mascara) ignorada")
+            return state
+        key = self.resolve(n.image, n.tag, state, n)
+        self.reg.last_key[n.tag] = key
+        iid, flip = self.reg.image_id(key)
+        existing = n.tag in state.tags
+        if existing and n.tag not in state.z:
+            state.z[n.tag] = max(state.z.values(), default=0)
+        if existing and not n.behind:
+            z = Z_KEEP
+        elif n.behind:
+            ref = n.behind[0].split()[-1] if n.behind[0] else None
+            base = state.z.get(ref, max(state.z.values(), default=0) + 1)
+            z = max(-100, base - 1)
+            state.z[n.tag] = z
+        else:
+            z = min(120, max(state.z.values(), default=0) + 1)
+            state.z[n.tag] = z
+        pos = POS_NONE
+        extra_transforms = []
+        for name in n.at:
+            if name in self.p.positions and pos == POS_NONE:
+                pos = self.p.positions[name]
+            elif name in self.p.transforms:
+                extra_transforms.append(name)
+            elif name not in ("vpunch", "hpunch", "center"):
+                self.warn(n, f"transform desconocido: {name}")
+        anim = atl_module.compile_anim(self, n, extra_transforms)
+        flags = FLAG_FLIP if flip else 0
+        self.emit("SHOW", n.line, tag=self.reg.tag(n.tag), image=iid, pos=pos, z=z, flags=flags, anim=anim)
+        state.tags[n.tag] = {key}
+        if n.with_:
+            self.transition(n.with_, n)
+        return state
+
+    def n_Hide(self, n, state):
+        self.emit("HIDE", n.line, tag=self.reg.tag(n.tag))
+        state.tags.pop(n.tag, None)
+        state.z.pop(n.tag, None)
+        if n.with_:
+            self.transition(n.with_, n)
+        return state
+
+    # -- audio ----------------------------------------------------------------
+    def audio(self, name, node):
+        if name.startswith("<"):
+            return None
+        return self.reg.audio_id(name)
+
+    def n_Play(self, n, state):
+        ch = n.channel
+        fade = tenths(n.fadein)
+        for i, src in enumerate(n.sources):
+            track = self.audio(src, n)
+            if ch in MUSIC_CHANNELS:
+                if track is None:
+                    self.emit("MUSIC_STOP", n.line, fade=0)
+                elif i == 0 and n.verb == "play":
+                    self.emit("MUSIC_PLAY", n.line, track=track, fade=fade, flags=1 if ch != "music" else 0)
+                else:
+                    self.emit("MUSIC_QUEUE", n.line, track=track)
+            elif ch in AMBIENT_SLOTS:
+                if track is not None:
+                    self.emit("AMBIENT_PLAY", n.line, slot=AMBIENT_SLOTS[ch], sound=track, fade=fade)
+            elif ch in SFX_CHANNELS:
+                if track is not None:
+                    self.emit("SFX_PLAY", n.line, sound=track)
+            else:
+                self.warn(n, f"canal de audio desconocido: {ch}")
+        return state
+
+    def n_Stop(self, n, state):
+        fade = tenths(n.fadeout)
+        if n.channel in MUSIC_CHANNELS:
+            self.emit("MUSIC_STOP", n.line, fade=fade)
+        elif n.channel in AMBIENT_SLOTS:
+            self.emit("AMBIENT_STOP", n.line, slot=AMBIENT_SLOTS[n.channel], fade=fade)
+        elif n.channel in SFX_CHANNELS:
+            self.emit("SFX_STOP", n.line, fade=fade)
+        return state
+
+    # -- variables y Python ----------------------------------------------------
+    def expr(self, text, node):
+        try:
+            tree = ast.parse(text.strip(), mode="eval").body
+        except SyntaxError as exc:
+            raise CompileError(f"{node.file}:{node.line}: condicion invalida {text}: {exc}")
+        self.expr_node(tree, node)
+
+    def expr_node(self, t, node):
+        if isinstance(t, ast.Constant):
+            value = t.value
+            if value is None:
+                value = 0
+            self.emit("PUSH_CONST", node.line, value=int(value))
+        elif isinstance(t, ast.Name):
+            self.emit("PUSH_VAR", node.line, var=self.reg.var(t.id))
+        elif isinstance(t, ast.Attribute) and ast.unparse(t) == "persistent.lewd":
+            self.emit("PUSH_CONST", node.line, value=1)   # material picante siempre activado
+        elif isinstance(t, ast.Compare):
+            self.expr_node(t.left, node)
+            self.expr_node(t.comparators[0], node)
+            self.emit("OP", node.line, op=OP_CODE[{ast.Eq: "==", ast.NotEq: "!=", ast.Lt: "<", ast.LtE: "<=", ast.Gt: ">", ast.GtE: ">="}[type(t.ops[0])]])
+            for op, comp in zip(t.ops[1:], t.comparators[1:]):
+                raise CompileError(f"{node.file}:{node.line}: comparacion encadenada")
+        elif isinstance(t, ast.BoolOp):
+            self.expr_node(t.values[0], node)
+            for v in t.values[1:]:
+                self.expr_node(v, node)
+                self.emit("OP", node.line, op=OP_CODE["and" if isinstance(t.op, ast.And) else "or"])
+        elif isinstance(t, ast.UnaryOp) and isinstance(t.op, ast.Not):
+            self.expr_node(t.operand, node)
+            self.emit("OP", node.line, op=OP_CODE["not"])
+        elif isinstance(t, ast.UnaryOp) and isinstance(t.op, ast.USub) and isinstance(t.operand, ast.Constant):
+            self.emit("PUSH_CONST", node.line, value=-int(t.operand.value))
+        elif isinstance(t, ast.BinOp) and type(t.op) in (ast.Add, ast.Sub, ast.Mult):
+            self.expr_node(t.left, node)
+            self.expr_node(t.right, node)
+            self.emit("OP", node.line, op=OP_CODE[{ast.Add: "+", ast.Sub: "-", ast.Mult: "*"}[type(t.op)]])
+        else:
+            raise CompileError(f"{node.file}:{node.line}: expresion sin soporte: {ast.unparse(t)}")
+
+    def n_Define(self, n, state):
+        return state
+
+    def n_Transform(self, n, state):
+        self.p.transforms[n.name] = n.atl
+        return state
+
+    def n_Py(self, n, state):
+        if n.block:
+            return self.py_block(n, state)
+        try:
+            body = ast.parse(n.code).body
+        except SyntaxError as exc:
+            raise CompileError(f"{n.file}:{n.line}: python invalido: {exc}")
+        for stmt in body:
+            self.py_stmt(stmt, n)
+        return state
+
+    def py_stmt(self, s, node):
+        if isinstance(s, (ast.Assign, ast.AugAssign)):
+            target = s.targets[0] if isinstance(s, ast.Assign) else s.target
+            if isinstance(target, ast.Name):
+                var = self.reg.var(target.id)
+                if isinstance(s, ast.AugAssign) and isinstance(s.value, ast.Constant) and isinstance(s.op, (ast.Add, ast.Sub)):
+                    value = int(s.value.value)
+                    self.emit("ADD_VAR", node.line, var=var, value=value if isinstance(s.op, ast.Add) else -value)
+                elif isinstance(s, ast.Assign) and isinstance(s.value, ast.Constant):
+                    v = s.value.value
+                    self.emit("SET_VAR", node.line, var=var, value=0 if v is None else int(v))
+                else:
+                    if isinstance(s, ast.AugAssign):
+                        self.emit("PUSH_VAR", node.line, var=var)
+                        self.expr_node(s.value, node)
+                        self.emit("OP", node.line, op=OP_CODE[{ast.Add: "+", ast.Sub: "-", ast.Mult: "*"}[type(s.op)]])
+                    else:
+                        self.expr_node(s.value, node)
+                    self.emit("STORE_VAR", node.line, var=var)
+                return
+            if isinstance(target, ast.Attribute) and ast.unparse(target) == "persistent.bonus_chapters":
+                m = re.search(r"<<\s*(\d+)", ast.unparse(s.value))
+                if m:
+                    self.emit("UNLOCK_BONUS", node.line, n=int(m.group(1)))
+                    return
+            if isinstance(target, ast.Attribute) and ast.unparse(target).startswith("persistent."):
+                self.warn(node, f"persistent ignorado: {ast.unparse(s)}")
+                return
+            raise CompileError(f"{node.file}:{node.line}: asignacion sin soporte: {ast.unparse(s)}")
+        if isinstance(s, ast.Expr) and isinstance(s.value, ast.Call):
+            self.py_call(s.value, node)
+            return
+        raise CompileError(f"{node.file}:{node.line}: python sin soporte: {ast.unparse(s)[:80]}")
+
+    def py_call(self, call, node):
+        name = ast.unparse(call.func)
+        if name in ("webbrowser.open", "renpy.input"):
+            self.warn(node, f"{name} ignorada (funcion de PC)")
+            return
+        args = [self.const(a) for a in call.args]
+        kwargs = {k.arg: self.const(k.value) for k in call.keywords}
+        if name == "renpy.music.set_volume":
+            vol, delay, channel = (list(args) + [None, None, None])[:3]
+            channel = kwargs.get("channel", channel) or "music"
+            delay = kwargs.get("delay", delay) or 0
+            self.emit("VOLUME", node.line, channel=VOLUME_CHANNELS.get(channel, 0), volume=int(max(0, min(255, round(float(vol) * 255)))), time=tenths(delay))
+        elif name == "renpy.mark_image_seen":
+            key = self.p.images.resolve(args[0].split())
+            if key is None:
+                self.warn(node, f"mark_image_seen de imagen inexistente (sin efecto en el original): {args[0]}")
+                return
+            iid, _ = self.reg.image_id(key)
+            self.emit("MARK_SEEN", node.line, image=iid)
+        elif name == "showCG":
+            keys = [self.p.images.resolve((f"text{i}",)) for i in range(1, 10)]
+            ids = [self.reg.image_id(k)[0] for k in keys]
+            if ids != list(range(ids[0], ids[0] + 9)):
+                raise CompileError("las imagenes text1..text9 no tienen IDs consecutivos")
+            self.emit("SHOW_RANDOM", node.line, tag=self.reg.tag("textlayer"), first=ids[0], count=9, flags=0)
+        elif name == "renpy.music.stop":
+            self.emit("MUSIC_STOP", node.line, fade=tenths(kwargs.get("fadeout", 0)))
+        elif name == "renpy.pause":
+            self.emit("PAUSE", node.line, frames=frames(float(args[0])) if args else 0, flags=1)
+        elif name == "renpy.quit":
+            self.emit("END", node.line)
+        elif name == "renpy.music.queue":
+            track = self.audio(args[0], node)
+            if track is not None:
+                self.emit("MUSIC_QUEUE", node.line, track=track)
+        elif name in ("setup_ending", "ending_image", "toggle_debug"):
+            self.warn(node, f"{name}() lo cubre STORY.VNB")
+        elif name in ("webbrowser.open", "renpy.input"):
+            self.warn(node, f"{name} ignorada (funcion de PC)")
+        else:
+            raise CompileError(f"{node.file}:{node.line}: llamada sin soporte: {ast.unparse(call)[:80]}")
+
+    def const(self, t):
+        try:
+            return ast.literal_eval(t)
+        except Exception:
+            raise CompileError(f"argumento no constante: {ast.unparse(t)}")
+
+    # -- menus escritos en Python ---------------------------------------------
+    def py_block(self, n, state):
+        try:
+            body = ast.parse(n.code).body
+        except SyntaxError as exc:
+            raise CompileError(f"{n.file}:{n.line}: python invalido: {exc}")
+        env = self.pyenv
+        for i, s in enumerate(body):
+            if isinstance(s, ast.Assign) and isinstance(s.targets[0], ast.Name):
+                name = s.targets[0].id
+                if name == "choices":
+                    value = s.value
+                    if isinstance(value, ast.Call) and ast.unparse(value.func) == "randomize_choices":
+                        env["shuffle"] = True
+                    elif isinstance(value, (ast.List, ast.Tuple)):
+                        env["choices"] = self.parse_choices(value, n)
+                        env["shuffle"] = False
+                    continue
+                if name == "_tick":
+                    env["_tick"] = self.const(s.value)
+                    continue
+                if name == "_value" and isinstance(s.value, ast.Call) and ast.unparse(s.value.func) == "renpy.display_menu":
+                    return self.py_menu(n, s.value, body[i + 1:], state)
+            if isinstance(s, ast.AugAssign) and isinstance(s.target, ast.Name) and s.target.id == "_tick":
+                env["_tick"] = env.get("_tick", 0) + self.const(s.value)
+                continue
+            if isinstance(s, ast.Expr) and isinstance(s.value, ast.Call) and ast.unparse(s.value.func) == "renpy.jump" \
+                    and isinstance(s.value.args[0], ast.Call) and ast.unparse(s.value.args[0].func) == "renpy.display_menu":
+                fake = ast.parse("renpy.jump(_value)").body
+                return self.py_menu(n, s.value.args[0], fake, state)
+            self.py_stmt(s, n)
+        return state
+
+    def parse_choices(self, node, n):
+        out = []
+        for elt in node.elts:
+            text_node, label_node = elt.elts
+            text = text_node.args[0].value if isinstance(text_node, ast.Call) else text_node.value
+            out.append((text, label_node.value))
+        return out
+
+    def py_menu(self, n, call, rest, state):
+        env = self.pyenv
+        arg = call.args[0]
+        shuffle = env.get("shuffle", False)
+        if isinstance(arg, ast.Call) and ast.unparse(arg.func) == "randomize_choices":
+            shuffle = True
+        choices = env.get("choices")
+        if choices is None:
+            raise CompileError(f"{n.file}:{n.line}: menu en Python sin lista de opciones")
+        entries, labels = [], []
+        for text, target in choices:
+            es = self.p.tr.string(text)
+            if es is None:
+                raise CompileError(f"{n.file}:{n.line}: opcion de menu sin traduccion: {text}")
+            lbl = self.new_label("pyopt")
+            labels.append(lbl)
+            entries.append((self.add_string(None, es), lbl))
+        self.emit("MENU", n.line, flags=1 if shuffle else 0, choices=entries)
+        end = self.new_label("pyend")
+        outs = []
+        fall_env = None
+        for (text, target), lbl in zip(choices, labels):
+            self.emit("LABEL", n.line, name=lbl)
+            benv = dict(env)
+            benv["_value"] = target
+            alive = self.py_branch(n, rest, benv, state.copy())
+            if alive is not None:
+                self.emit("JUMP", n.line, target=end)
+                fall_env = benv
+            outs.append(alive)
+        self.emit("LABEL", n.line, name=end)
+        if fall_env is not None:
+            self.pyenv = {k: v for k, v in fall_env.items() if k != "_value"}
+        return merge_states(outs)
+
+    def py_branch(self, n, stmts, env, state):
+        for s in stmts:
+            if state is None:
+                return None
+            if isinstance(s, ast.AugAssign) and isinstance(s.target, ast.Name) and s.target.id == "_tick":
+                env["_tick"] = env.get("_tick", 0) + self.const(s.value)
+            elif isinstance(s, ast.Assign) and isinstance(s.targets[0], ast.Name) and s.targets[0].id == "_tick":
+                env["_tick"] = self.const(s.value)
+            elif isinstance(s, ast.If):
+                chosen = s.body if self.eval_const(s.test, env) else s.orelse
+                state = self.py_branch(n, chosen, env, state)
+            elif isinstance(s, ast.Expr) and isinstance(s.value, ast.Call) and ast.unparse(s.value.func) == "renpy.jump":
+                target = self.eval_const(s.value.args[0], env)
+                self.jump_to(target, state, n, True)
+                return None
+            else:
+                self.py_stmt(s, n)
+        return state
+
+    def eval_const(self, t, env):
+        if isinstance(t, ast.Constant):
+            return t.value
+        if isinstance(t, ast.Name):
+            return env[t.id]
+        if isinstance(t, ast.BinOp) and isinstance(t.op, ast.Add):
+            return self.eval_const(t.left, env) + self.eval_const(t.right, env)
+        if isinstance(t, ast.Call) and ast.unparse(t.func) == "chr":
+            return chr(self.eval_const(t.args[0], env))
+        if isinstance(t, ast.Compare) and len(t.ops) == 1:
+            a, b = self.eval_const(t.left, env), self.eval_const(t.comparators[0], env)
+            return {ast.Eq: a == b, ast.NotEq: a != b}[type(t.ops[0])]
+        raise CompileError(f"expresion constante sin soporte: {ast.unparse(t)}")
+
+
+TRANSITION_NAMES = {
+    "dissolve": (1, 30, 0, 0), "fade": (2, 30, 0, 30), "vpunch": (3, 20, 0, 0), "hpunch": (4, 20, 0, 0),
+    "None": (0, 0, 0, 0), "move": (0, 0, 0, 0), "ease": (1, 30, 0, 0), "easeinbottom": (1, 30, 0, 0),
+    "easeintop": (1, 30, 0, 0), "easeinleft": (1, 30, 0, 0), "easeinright": (1, 30, 0, 0),
+    "easeoutbottom": (1, 30, 0, 0), "easeouttop": (1, 30, 0, 0), "easeoutleft": (1, 30, 0, 0),
+    "easeoutright": (1, 30, 0, 0), "moveinbottom": (1, 30, 0, 0), "moveouttop": (1, 30, 0, 0),
+    "zoomin": (1, 30, 0, 0), "zoomout": (1, 30, 0, 0), "pixellate": (1, 30, 0, 0), "blinds": (1, 30, 0, 0),
+}
+
+
+def parse_transition(expr):
+    """Interpreta una expresion de transicion de Ren'Py. Devuelve (tipo, a, b, c) en cuadros o None."""
+    expr = expr.strip()
+    if expr in TRANSITION_NAMES:
+        return TRANSITION_NAMES[expr]
+    try:
+        tree = ast.parse(expr, mode="eval").body
+    except SyntaxError:
+        return None
+    if isinstance(tree, ast.Call):
+        name = ast.unparse(tree.func)
+        nums = []
+        for a in tree.args:
+            try:
+                nums.append(float(ast.literal_eval(a)))
+            except Exception:
+                pass
+        if name == "Dissolve" and nums:
+            return (1, frames(nums[0]), 0, 0)
+        if name == "Fade" and len(nums) >= 3:
+            return (2, frames(nums[0]), frames(nums[1]), frames(nums[2]))
+        if name in ("MoveTransition", "Move", "ease", "easeinbottom"):
+            return (0, 0, 0, 0)
+        if name in ("ImageDissolve", "AlphaDissolve", "CropMove", "PushMove", "Pixellate", "ComposeTransition"):
+            return (1, frames(nums[0]) if nums else 30, 0, 0)
+    if isinstance(tree, ast.Name):
+        return TRANSITION_NAMES.get(tree.id)
+    return None

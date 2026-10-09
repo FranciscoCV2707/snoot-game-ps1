@@ -171,6 +171,12 @@ class Camera(Node):
 
 
 @dataclass
+class LayeredImage(Node):
+    name: str
+    body: list
+
+
+@dataclass
 class Raw:
     """Linea logica con su sangria y sus hijos (bloque)."""
     indent: int
@@ -179,6 +185,9 @@ class Raw:
     children: list = field(default_factory=list)
 
 
+SAY_RE = re.compile(
+    r"""^(?:(extend)\s*(?=["'])|((?:[A-Za-z_]\w*)(?:\s+[\w@.]+)*|"[^"]*")\s+)?("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')(.*)$"""
+)
 KEYWORD_RE = re.compile(r"\s+(as|at|behind|onlayer|zorder|with)\s+")
 DIALOGUE_TAIL_RE = re.compile(r"\s+(id\s+(\w+)|with\s+(.+?))(?=\s+id\s+|\s+with\s+|$)")
 
@@ -397,7 +406,12 @@ class Parser:
             if re.match(r"init(\s+-?\d+)?\s*:\s*$", text):
                 return Py(f, ln, "", True) if not raw.children else self.block(raw.children)
             self.err(raw, "init no soportado")
-        if word in ("style", "screen", "translate", "layeredimage", "on", "use"):
+        if word == "layeredimage":
+            lm = re.match(r"layeredimage\s+([\w ]+?)\s*:\s*$", text)
+            if not lm:
+                self.err(raw, "layeredimage invalido")
+            return LayeredImage(f, ln, lm.group(1), raw_to_atl(raw.children))
+        if word in ("style", "screen", "translate", "on", "use"):
             return None
         if word == "camera":
             return Camera(f, ln, raw_to_atl(raw.children))
@@ -475,7 +489,7 @@ class Parser:
 
     def parse_say(self, raw, extend=False):
         text = raw.text
-        m = re.match(r"""^(?:(extend)\s*(?=["'])|((?:[A-Za-z_]\w*)(?:\s+[\w@.]+)*|"[^"]*")\s+)?("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')(.*)$""", text)
+        m = SAY_RE.match(text)
         if not m:
             self.err(raw, "instruccion desconocida")
         who = None

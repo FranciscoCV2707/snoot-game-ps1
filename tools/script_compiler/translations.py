@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 
 from tools.audit.inventario import strip_comment
-from tools.script_compiler.rpy_parser import unquote
+from tools.script_compiler.rpy_parser import SAY_RE, unquote
 
 GAME = Path(__file__).resolve().parents[2] / "original" / "game"
 STRING_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'')
@@ -55,13 +55,13 @@ class Translations:
                     old = None
             elif current is not None:
                 if s.startswith("#"):
-                    tokens = STRING_TOKEN.findall(s)
-                    if tokens:
-                        current["orig"].append(unquote(tokens[-1]))
+                    m = SAY_RE.match(s[1:].strip())
+                    if m:
+                        current["orig"].append(unquote(m.group(3)))
                 else:
-                    tokens = STRING_TOKEN.findall(strip_comment(s))
-                    if tokens:
-                        current["text"].append(unquote(tokens[-1]))
+                    m = SAY_RE.match(strip_comment(s))
+                    if m:
+                        current["text"].append(unquote(m.group(3)))
 
     def build_index(self):
         """Indice (etiqueta, texto original) -> ids en el orden de tl, para dialogos sin `id` explicito."""
