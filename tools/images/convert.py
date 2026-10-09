@@ -29,7 +29,9 @@ OUT = DATA / "IMG"
 TMP = ROOT / "build" / "tmp" / "img"
 REPORT_DIR = ROOT / "build" / "reports" / "arte"
 SCALE = 6                    # 1920 / 320
-SCALE_OVERRIDE = {"ui logo": 3}   # el logo del titulo se dibuja mas grande (pantalla completa de 320x240)
+TEXT_IMAGES = {f"text{i}" for i in range(1, 10)}                 # textos de insultos (capitulo 1): legibles al doble de tamano
+NO_DITHER = TEXT_IMAGES | {"vvurm_drama_poster", "jewlcase", "fastforward"}   # imagenes con texto: sin tramado
+SCALE_OVERRIDE = {"ui logo": 3, **{name: 3 for name in TEXT_IMAGES}}   # el logo del titulo se dibuja mas grande (pantalla completa de 320x240)
 HALF_AREA = 90000            # sprites de mas de ~90000 pixeles se guardan a media resolucion
 DITHER_STRENGTH = 2
 KIND_BG, KIND_SPRITE, KIND_SOLID, KIND_EMPTY = 0, 1, 2, 3
@@ -48,8 +50,9 @@ def noisy(arr):
     return np.clip(arr.astype(np.int16) + dither_offsets(arr.shape) * DITHER_STRENGTH, 0, 255).astype(np.uint8)
 
 
-def quantize_with(rgb_arr, palette_img):
-    return np.asarray(Image.fromarray(noisy(rgb_arr), "RGB").quantize(palette=palette_img, dither=Image.Dither.NONE))
+def quantize_with(rgb_arr, palette_img, dither=True):
+    source = noisy(rgb_arr) if dither else rgb_arr
+    return np.asarray(Image.fromarray(source, "RGB").quantize(palette=palette_img, dither=Image.Dither.NONE))
 
 
 # ------------------------------------------------------------------ fase 1: renderizar y reducir
@@ -107,7 +110,7 @@ def phase1_run(task):
         crop, semi = small, 0.0
     path = TMP / f"{iid:04d}.png"
     crop.save(path)
-    meta.update(kind=kind, ow=ow, oh=oh, full_w=w, full_h=h, x=x0 + ox, y=y0 + oy, w=crop.width, h=crop.height, semi=semi, half=half,
+    meta.update(name=name, kind=kind, ow=ow, oh=oh, full_w=w, full_h=h, x=x0 + ox, y=y0 + oy, w=crop.width, h=crop.height, semi=semi, half=half,
                 tmp=str(path), group=render.first_file(recipe))
     return meta
 
@@ -169,12 +172,12 @@ def phase3(task):
     if kind == KIND_BG:
         base = Image.fromarray(rgb, "RGB")
         pal = base.quantize(256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE)
-        idx = quantize_with(rgb, pal)
+        idx = quantize_with(rgb, pal, meta.get("name") not in NO_DITHER)
         colors = pal.getpalette()[:768]
         flags = 0
     else:
         pal = palette_image(flat)
-        idx = quantize_with(rgb, pal).astype(np.int16) + 1
+        idx = quantize_with(rgb, pal, meta.get("name") not in NO_DITHER).astype(np.int16) + 1
         if meta.get("semi", 0) > 0.30:    # efectos translucidos (vineta, brillos): el alfa se convierte en tramado
             tile = np.tile((PSX_DITHER + 4.5) / 8.0, (alpha.shape[0] // 4 + 1, alpha.shape[1] // 4 + 1))[:alpha.shape[0], :alpha.shape[1]]
             idx[(alpha / 255.0) <= tile] = 0
@@ -224,7 +227,13 @@ def preview(meta, idx, words, flags):
     h, w = idx.shape
     if orig.shape[1] < w:
         orig = np.pad(orig, ((0, 0), (0, w - orig.shape[1]), (0, 0)))
-    if meta["kind"] == KIND_BG:
+    if meta["kind"] == KIND_BG and h != 180:
+        # CG alto (se desplaza en el juego): se muestra con su proporcion real, sin pantalla ni letterbox
+        for tag, source in (("o", orig[..., :3]), ("c", rgb)):
+            shown = Image.fromarray(source[:, :meta["w"]], "RGB")
+            shown.resize((int(shown.width * 1.5), int(shown.height * 1.5)), Image.LANCZOS if tag == "o" else Image.NEAREST).save(
+                REPORT_DIR / f"{iid:04d}_{tag}.jpg", quality=85)
+    elif meta["kind"] == KIND_BG:
         for tag, source in (("o", orig[..., :3]), ("c", rgb)):
             shown = Image.fromarray(source[:, :meta["w"]], "RGB")
             if tag == "c":
