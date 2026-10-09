@@ -1,5 +1,15 @@
 # Bitácora
 
+## 2026-10-08 - Fase 3 (compilador y simulador)
+Hecho:
+- `tools/script_compiler/` (parser, imagenes, traducciones, lowering, ATL, ensamblador) y `tools/simulator/` (VM, exploracion, reporte).
+- Salidas en `build/data` y `build/reports/cobertura.md`; documentado en `docs/compilador.md`.
+- Hallazgos: Ren'Py conserva atributos de imagen entre `scene`/`hide`; `setup_ending()` se ejecuta dentro del capitulo 11; hasta 11 sprites simultaneos (extra x6).
+
+Pendiente:
+- Fase 4: convertir las 615 imagenes de `meta.json`.
+- Pruebas comparativas del orden de dialogo contra Ren'Py real (opcional).
+
 ## 2026-10-08 - Fase 2 (decisiones y especificacion)
 Hecho:
 - Prototipo de resolucion/formato (`tools/images/proto_compare.py`), prueba XA + CD (`experiments/xa_test`), interleaver XA, auditoria de audio.

@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from tools.script_compiler import assemble
+from tools.script_compiler.atl import build_anim_table
 from tools.script_compiler.lower import CompileError, Inst, Lowerer, Registry
 from tools.script_compiler.opcodes import OP_CODE
 from tools.script_compiler.project import GAME, Project
@@ -137,7 +138,7 @@ FONT_PATH = GAME / "gui" / "fonts" / "NotoSansJP-Regular.ttf"
 TEXT_WIDTH = 304       # pixeles utiles de la caja (D6)
 TEXT_LINES = 3
 CHOICE_WIDTH = 296
-CHOICE_LINES = 2
+CHOICE_LINES = 3
 
 
 def paginate_strings(result):
@@ -190,8 +191,9 @@ def compile_all(out=OUT):
         for n, o in exported:
             table.append((label_ids.setdefault(n, len(label_ids)), o))
         strings = [s["text"] for s in result.irs[idx].strings] if idx in result.irs else []
+        anims = result.irs[idx].anims if idx in result.irs else []
         bases[idx] = base
-        blob = assemble.build_vnb(idx, code, table, base, len(strings), b"", 0)
+        blob = assemble.build_vnb(idx, code, table, base, len(strings), build_anim_table(anims) if anims else b"", len(anims))
         base += len(strings)
         files[f"C{idx:02d}.VNB" if idx != story_index else "STORY.VNB"] = blob
         text_chapters.append((idx, strings))

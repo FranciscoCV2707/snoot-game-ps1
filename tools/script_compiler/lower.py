@@ -74,6 +74,7 @@ class Registry:
         self.vars = {}
         self.tag_ids = {}
         self.last_key = {}
+        self.pos_state = {}
 
     def image_id(self, key):
         recipe, flip = self.project.images.canonical(key)

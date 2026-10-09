@@ -2,7 +2,7 @@
 
 Ultima actualizacion: 2026-10-08
 
-## Fase actual: 2 - Decisiones tecnicas y especificacion (terminada, pendiente de tu revision)
+## Fase actual: 3 terminada; siguiente: 4 - Pipeline de imagenes
 
 ## Hecho
 ### Fase 0 - Entorno (terminada)
@@ -28,12 +28,20 @@ Ultima actualizacion: 2026-10-08
 - [x] docs/bytecode.md v1, docs/presupuesto-audio.md, docs/presupuesto-memoria.md
 - [x] Criterios: disco con 77% libre (>=15%), VRAM 29% libre y RAM 25% libre (>=20%), memory card 1 bloque, bytecode cubre toda la auditoria
 
+### Fase 3 - Convertidor de scripts y simulador (terminada)
+- [x] Parser de Ren'Py propio (39 de 39 archivos, 14,691 dialogos)
+- [x] Tabla de imagenes, traduccion al espanol (0 lineas sin traducir), personajes, posiciones, variables
+- [x] Compilador a bytecode VNB (40,579 instrucciones), STORY.VNB, TEXT_ES.BIN, meta.json
+- [x] ATL -> fotogramas clave (2,716 animaciones), texto partido en lineas y paginas
+- [x] Desensamblador y simulador con exploracion automatica de rutas
+- [x] Cobertura: 4 finales, 93 de 93 etiquetas, 9 extras, 203 de 203 de galeria, 0 errores
+- [x] 33 tests; docs/compilador.md y build/reports/cobertura.md
+
 ## Siguiente
 - [ ] Tu revision de docs/decisiones.md, docs/bytecode.md y docs/presupuesto-memoria.md
-- [ ] Fase 3 - Convertidor de scripts y simulador
+- [ ] Fase 4 - Pipeline de imagenes (usa build/data/meta.json: 615 imagenes con receta)
 
 ## Pendiente (fases siguientes)
-- [ ] Fase 3 - Convertidor de scripts y simulador
 - [ ] Fase 4 - Pipeline de imagenes
 - [ ] Fase 5 - Pipeline de audio
 - [ ] Fase 6 - Motor PS1: base

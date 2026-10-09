@@ -54,7 +54,7 @@ Formato: `opcode u8` seguido de los argumentos. Tamaños en bytes entre parénte
 | Op | Nombre | Argumentos | Ren'Py |
 |---|---|---|---|
 | 0x10 | `SCENE` | imagen u16 (3); 0 = negro | `scene fondo` (borra todos los sprites) |
-| 0x11 | `SHOW` | tag u8, imagen u16, pos u8, z i8, flags u8, anim u8 (8) | `show anon neutral at sleft`, `behind`, `flip`, `at` con ATL |
+| 0x11 | `SHOW` | tag u8, imagen u16, pos u8, z i8, flags u8, anim u16 (9) | `show anon neutral at sleft`, `behind`, `flip`, `at` con ATL |
 | 0x12 | `HIDE` | tag u8 (2) | `hide fang` |
 | 0x13 | `TRANSITION` | tipo u8, a u16, b u16, c u16 (8) | `with Dissolve(1)`, `with fade`, `with None` |
 | 0x14 | `SHOW_RANDOM` | tag u8, primera imagen u16, cantidad u8, flags u8 (6) | `showCG()` (elige 1 de las 9 imágenes de texto en una posición aleatoria) |
@@ -63,7 +63,7 @@ Formato: `opcode u8` seguido de los argumentos. Tamaños en bytes entre parénte
 - `tag` identifica el "lugar" del sprite (anon, fang, naser, bg...). `SHOW` con un tag que ya existe lo reemplaza. Hasta 12 sprites simultáneos más el fondo (los fondos de color sólido, como `black`, `white` o `dimmer_*`, no cuentan: se dibujan como rectángulos).
 - `z` es el orden de dibujo (de `behind`): mayor se dibuja encima.
 - `flags` de `SHOW`: bit0 volteado (`xzoom -1`/`flip`), bit1 empezar invisible. Las 245 definiciones `im.Flip(...)` del juego no generan imágenes nuevas: el compilador usa la imagen original con el bit de volteo (cambia las coordenadas de textura).
-- `anim` indexa la tabla ANIM del capítulo (0 = ninguna).
+- `anim` indexa la tabla ANIM del capítulo (0 = ninguna, 1 = la primera). Una `SHOW` sobre un tag existente con `z` = -128 conserva su orden de dibujo.
 - Los cambios de `SCENE`/`SHOW`/`HIDE` se acumulan; `TRANSITION` los presenta con el efecto indicado. Sin `TRANSITION`, el cambio se ve de golpe cuando termina la instrucción de texto o pausa siguiente.
 - Tipos de `TRANSITION`: 0 corte (`with None`), 1 disolver (a = duración en cuadros), 2 fundido por negro (a = salida, b = espera, c = entrada), 3 sacudida vertical, 4 sacudida horizontal. Las demás transiciones (`MoveTransition`, `easeinbottom`, `move`) se aproximan a disolver o corte.
 - Imágenes con efecto de galería o final: el índice de imágenes marca el bit; el motor lo registra al mostrarse con `SCENE`/`SHOW`. Las cuatro imágenes `e1of4`...`e4of4` registran además el final alcanzado.
@@ -137,7 +137,7 @@ El compilador "ejecuta" los bloques ATL de Ren'Py (unas 2,957 apariciones, sobre
 anim:  u8 número de fotogramas clave (1-8), u8 flags (bit0 bucle, bit1 vaivén)
 clave: u16 tiempo en cuadros, s16 xalign (8.8), s16 yalign (8.8), u8 alfa (0-255), u8 curva,
        u8 zoom (1/64; 64 = 1.0), s8 xzoom (1/64; negativo = espejo), s8 rotación (360/256 grados por unidad),
-       u8 r, u8 g, u8 b (modulación de color; 128 = sin cambio, 255 = 2x)   -> 16 bytes
+       u8 r, u8 g, u8 b (modulación de color; 128 = sin cambio, 255 = 2x)   -> 14 bytes
 ```
 - Curvas: 0 lineal, 1 aceleración (ease-in cúbica), 2 desaceleración (ease-out cúbica), 3 ease-in-out. Las demás (`back`, `elastic`, `quart`, `quad`, `bounce`) se aproximan a la más cercana.
 - `parallel:` de ejes distintos se combina en la misma clave. Los bloques que superan 8 claves se recortan y se reportan. `choice:` (25 usos) toma siempre la primera rama.
