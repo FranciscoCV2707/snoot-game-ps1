@@ -8,6 +8,7 @@ typedef struct {
 	uint16_t full_w, full_h;      /* tamano logico a 320x240 */
 	uint16_t x, y, w, h;          /* bitmap dentro del tamano logico (w par) */
 	uint16_t vram_x, vram_y, clut_y;
+	uint8_t solid[4];             /* r, g, b, a de las imagenes de color solido */
 	uint8_t loaded;
 } Image;
 
@@ -16,3 +17,5 @@ int img_load(Image *img, const uint8_t *file, int file_size, int vram_x, int vra
 /* Dibuja la imagen con el origen logico en (screen_x, screen_y). Los 256 px de ancho de una pagina de textura
  * obligan a partir los fondos de 320 px en dos sprites. */
 void img_draw(const Image *img, int layer, int screen_x, int screen_y);
+/* Igual que img_draw; flip espeja la imagen completa (SHOW con el bit de espejo). */
+void img_draw_flip(const Image *img, int layer, int screen_x, int screen_y, int flip);

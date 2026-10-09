@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include <psxgpu.h>
 #include "img.h"
 #include "lz4.h"
@@ -36,6 +37,7 @@ int img_load(Image *img, const uint8_t *file, int file_size, int vram_x, int vra
 	img->y = rd16(file + 12);
 	img->w = rd16(file + 14);
 	img->h = rd16(file + 16);
+	memcpy(img->solid, file + 18, 4);
 	img->vram_x = vram_x;
 	img->vram_y = vram_y;
 	img->clut_y = clut_y;
@@ -68,27 +70,54 @@ int img_load(Image *img, const uint8_t *file, int file_size, int vram_x, int vra
 
 void img_draw(const Image *img, int layer, int screen_x, int screen_y)
 {
-	int col;
+	img_draw_flip(img, layer, screen_x, screen_y, 0);
+}
+
+/* Cada pieza cabe en una pagina de textura de 256 px; el origen en VRAM puede caer en cualquier palabra */
+void img_draw_flip(const Image *img, int layer, int screen_x, int screen_y, int flip)
+{
+	int col = 0;
 
 	if (!img->loaded)
 		return;
-	for (col = 0; col < img->w; col += 256) {
+	while (col < img->w) {
+		int word_x = img->vram_x + col / 2;
+		int page_x = word_x & ~63;
+		int u = (word_x - page_x) * 2;
 		int piece_w = img->w - col;
-		SPRT *s;
+		int v = img->vram_y & 255;
 
-		if (piece_w > 256)
-			piece_w = 256;
-		s = (SPRT *)video_alloc(sizeof(SPRT));
-		if (!s)
-			return;
-		setSprt(s);
-		setXY0(s, screen_x + img->x + col, screen_y + img->y);
-		setWH(s, piece_w, img->h);
-		setUV0(s, 0, img->vram_y & 255);
-		setRGB0(s, 128, 128, 128);
-		setClut(s, 0, img->clut_y);
-		video_add(layer, s);
-		/* la pagina de textura va antes del sprite: se agrega despues porque lo agregado despues se dibuja antes */
-		video_set_tpage(layer, 1, 0, img->vram_x + col / 2, img->vram_y);
+		if (piece_w > 256 - u)
+			piece_w = 256 - u;
+		if (flip) {
+			POLY_FT4 *p = (POLY_FT4 *)video_alloc(sizeof(POLY_FT4));
+			int x = screen_x + img->full_w - (img->x + col + piece_w);
+			int y = screen_y + img->y;
+
+			if (!p)
+				return;
+			setPolyFT4(p);
+			setXY4(p, x, y, x + piece_w, y, x, y + img->h, x + piece_w, y + img->h);
+			setUV4(p, u + piece_w - 1, v, u, v, u + piece_w - 1, v + img->h - 1, u, v + img->h - 1);
+			setRGB0(p, 128, 128, 128);
+			p->clut = getClut(0, img->clut_y);
+			p->tpage = getTPage(1, 0, page_x, img->vram_y);
+			video_add(layer, p);
+		} else {
+			SPRT *s = (SPRT *)video_alloc(sizeof(SPRT));
+
+			if (!s)
+				return;
+			setSprt(s);
+			setXY0(s, screen_x + img->x + col, screen_y + img->y);
+			setWH(s, piece_w, img->h);
+			setUV0(s, u, v);
+			setRGB0(s, 128, 128, 128);
+			setClut(s, 0, img->clut_y);
+			video_add(layer, s);
+			/* la pagina de textura va antes del sprite: se agrega despues porque lo agregado despues se dibuja antes */
+			video_set_tpage(layer, 1, 0, page_x, img->vram_y);
+		}
+		col += piece_w;
 	}
 }
