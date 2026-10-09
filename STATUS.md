@@ -27,10 +27,16 @@ Ultima actualizacion: 2026-10-08
 - [x] 10 tests pasando
 - [x] Resumen de partes dificiles (al final de docs/auditoria.md)
 
-## Decisiones que necesito de ti (Fase 2)
-- [ ] Capitulos extra: copiar la logica progresiva del original (recomendado) o usar la regla simple del plan
-- [ ] Ambientes y musica a la vez: no caben juntos en XA; elegir estrategia (VAG corto en bucle recomendado)
-- [ ] Video `fang tail.webm`: descartar o simplificar
+## Decisiones tomadas (ver docs/decisiones.md)
+- [x] D1: capitulos extra con la logica progresiva del original
+- [x] D2: musica en XA, ambientes en VAG cortos en bucle
+- [x] D3: video `fang tail.webm` descartado
+
+## Fase 2 en curso
+- [ ] Prototipo de resolucion y formato de fondos
+- [ ] Prueba tecnica XA + carga de datos del CD
+- [ ] Fuente, compresion, formato de memory card
+- [ ] docs/bytecode.md, docs/presupuesto-memoria.md
 
 ## Pendiente (fases siguientes)
 - [ ] Fase 2 - Decisiones tecnicas y especificacion (bytecode, VRAM/RAM, memory card)
