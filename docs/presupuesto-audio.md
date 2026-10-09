@@ -8,11 +8,12 @@ Generado por `tools/audio/audit_audio.py`.
 - Minutos de musica usada: 74.1.
 - Sin usar (no se convierten): Amberlight Brilliance D ending, amberlight brillance live end, dinolove, good faith reprise end, good faith synth finale end, goodfaithcover, ost cover, startup
 
-| Formato XA | Sectores (agrupando de 8 en 8) | Relleno | MB | % de un CD de 74 min |
-|---|---|---|---|---|
-| 37.8k estereo | 100472 | 17091 | 223.8 | 30.2% |
-| 18.9k estereo | 50256 | 8549 | 112.0 | 15.1% |
-| 18.9k mono | 25144 | 4274 | 56.0 | 7.6% |
+| Formato XA | Carriles | Sectores (agrupado simple) | Relleno | Sectores (carriles empaquetados) | MB empaquetado | % de un CD de 74 min |
+|---|---|---|---|---|---|---|
+| 37.8k estereo | 8 | 100472 | 17091 | 84280 | 187.8 | 25.3% |
+| 37.8k mono | 16 | 60048 | 18341 | 42784 | 95.3 | 12.8% |
+| 18.9k estereo | 16 | 60048 | 18341 | 42784 | 95.3 | 12.8% |
+| 18.9k mono | 32 | 40416 | 19546 | 31136 | 69.4 | 9.4% |
 
 ## Efectos
 

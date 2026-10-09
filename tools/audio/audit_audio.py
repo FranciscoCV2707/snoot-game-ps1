@@ -68,6 +68,20 @@ def collect_usage():
     return usage
 
 
+def pack_lanes(lengths, lanes):
+    """Carriles de igual duracion con pistas una tras otra (primero el mas largo). Devuelve sectores totales."""
+    ordered = sorted(lengths, reverse=True)
+    capacity = max(ordered[0], -(-sum(ordered) // lanes))
+    while True:
+        loads = [0] * lanes
+        for length in ordered:
+            lane = loads.index(min(loads))
+            loads[lane] += length
+        if max(loads) <= capacity:
+            return capacity * lanes
+        capacity += 1
+
+
 def pack_groups(lengths, per_group=SLOT_COUNT):
     """Agrupa pistas de longitud parecida de 8 en 8; devuelve sectores totales y de relleno."""
     ordered = sorted(lengths, reverse=True)
@@ -97,13 +111,17 @@ def main():
     music_min = sum(e["seconds"] for e in music.values()) / 60
 
     rows = {}
-    lengths = {k: [] for k in SECTORS_PER_MIN}
-    rate_per_sec = {"37.8k estereo": 18.75, "18.9k estereo": 9.375, "18.9k mono": 4.6875}
-    for fmt, per_sec in rate_per_sec.items():
+    # formato: (sectores por segundo de una pista, carriles entrelazados a 2x = 150 / sectores por segundo)
+    formats = {"37.8k estereo": (18.75, 8), "37.8k mono": (9.375, 16),
+               "18.9k estereo": (9.375, 16), "18.9k mono": (4.6875, 32)}
+    for fmt, (per_sec, lanes) in formats.items():
         slots = [int(e["seconds"] * per_sec) + 1 for e in music.values()]
-        total, padding = pack_groups(slots)
-        rows[fmt] = {"sectors": total, "padding": padding, "mb": round(total * 2336 / 1048576, 1),
-                     "pct_cd": round(total * 100 / SECTORS_PER_CD, 1)}
+        total, padding = pack_groups(slots, lanes)
+        packed = pack_lanes(slots, lanes)
+        rows[fmt] = {"lanes": lanes, "sectors": total, "padding": padding, "packed": packed,
+                     "mb": round(total * 2336 / 1048576, 1), "packed_mb": round(packed * 2336 / 1048576, 1),
+                     "pct_cd": round(total * 100 / SECTORS_PER_CD, 1),
+                     "packed_pct_cd": round(packed * 100 / SECTORS_PER_CD, 1)}
 
     oneshots = {k: v for k, v in sounds.items() if not v["loop"]}
     loops = {k: v for k, v in sounds.items() if v["loop"]}
@@ -125,9 +143,10 @@ def main():
              f"- Pistas en `audio/OST`: {len(all_music)}; usadas por la historia: {len(music)}; sin usar: {len(unused_music)}.",
              f"- Minutos de musica usada: {music_min:.1f}.",
              "- Sin usar (no se convierten): " + (", ".join(Path(m).stem for m in unused_music) or "ninguna"), "",
-             "| Formato XA | Sectores (agrupando de 8 en 8) | Relleno | MB | % de un CD de 74 min |", "|---|---|---|---|---|"]
+             "| Formato XA | Carriles | Sectores (agrupado simple) | Relleno | Sectores (carriles empaquetados) | MB empaquetado | % de un CD de 74 min |",
+             "|---|---|---|---|---|---|---|"]
     for fmt, r in rows.items():
-        lines.append(f"| {fmt} | {r['sectors']} | {r['padding']} | {r['mb']} | {r['pct_cd']}% |")
+        lines.append(f"| {fmt} | {r['lanes']} | {r['sectors']} | {r['padding']} | {r['packed']} | {r['packed_mb']} | {r['packed_pct_cd']}% |")
     lines += ["", "## Efectos", "",
               f"- Archivos de efectos usados: {len(sounds)} ({len(oneshots)} de un solo disparo, {len(loops)} en bucle).",
               f"- Segundos de un solo disparo: {sfx_total_s:.1f}; segundos de bucles recortados a {LOOP_SECONDS} s: {loop_total_s:.1f}.", "",

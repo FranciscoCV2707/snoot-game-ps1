@@ -67,8 +67,9 @@
 ## 2026-10-08 - D8: Música y efectos, calidad y espacio (`docs/presupuesto-audio.md`)
 **Datos reales** (`tools/audio/audit_audio.py`): de 71 pistas, la historia usa 63 (74.1 min); 8 no se usan y no se convierten. Hay 105 efectos usados: 65 de un solo disparo (308 s en total) y 40 ambientes en bucle (de más de 2 minutos cada uno).
 **Decisión:**
-1. **Música a máxima calidad, sin bajarla:** XA 37.8 kHz estéreo (4 bits). Ocupa 100,472 sectores (224 MB, 30% de un CD de 74 min) con el agrupado simple; el espacio no es un problema, así que no se recorta calidad.
-2. **Ahorro por carriles:** en vez de dejar relleno (17,091 sectores, 17%), las pistas se empaquetan en 8 carriles de igual duración, una tras otra dentro de cada carril. Estimado: ~83,000 sectores (~25% del CD). El motor busca el inicio de cada pista en su carril. Se implementa en la Fase 5 (`xa_interleave.py` pasa a aceptar listas de pistas por carril).
+1. **Música en mono (cambio pedido por el usuario):** XA 37.8 kHz **mono** (4 bits), con 16 carriles entrelazados a 2x. Conserva los agudos (ancho de banda ~18 kHz, igual que el estéreo de 37.8 kHz) y solo pierde la imagen estéreo. Pesa la mitad que el estéreo: 42,784 sectores empaquetados (95 MB, 12.8% de un CD) contra 84,280 (188 MB, 25.3%).
+   - Se descartó 18.9 kHz mono: con 32 carriles el empaquetado queda limitado por la pista más larga y solo ahorra ~25% más (31,136 sectores, 9.4%), con pérdida clara de agudos (ancho de banda ~9 kHz).
+2. **Ahorro por carriles:** en vez de dejar relleno (18,341 sectores, 30% en mono), las pistas se empaquetan en 16 carriles de igual duración, una tras otra dentro de cada carril. El motor busca el inicio de cada pista en su carril. Se implementa en la Fase 5 (`xa_interleave.py` pasa a aceptar listas de pistas por carril). `experiments/xa_test` ya se regeneró con 16 carriles mono para validarlo en emulador.
 3. **Intro y bucle:** pistas con intro (`... intro` + `... loop`) se guardan seguidas en el mismo carril; el reinicio del bucle es una búsqueda corta dentro del archivo. Si en consola real el hueco del bucle molesta, las pistas cortas que se repiten se graban dos veces seguidas.
 4. **Efectos de un disparo:** VAG a 22.05 kHz mono (≈3.8 MB en total).
 5. **Ambientes:** se recortan a un bucle de ~6 s con empalme suave y se graban a 16 kHz mono (≈2.0 MB en total; ruido de fondo, pérdida inaudible). Se cargan dentro de los paquetes de escena (D7); cada paquete debe caber en los 508 KB de RAM de sonido.
@@ -77,12 +78,12 @@
 **Presupuesto estimado del disco (un CD de 74 min, 333,000 sectores):**
 | Contenido | Sectores | % |
 |---|---|---|
-| Música XA (con carriles) | ~83,000 | ~25% |
+| Música XA mono 37.8 kHz (con carriles) | ~42,800 | ~13% |
 | Imágenes (≈250 fondos/CG + ≈330 sprites, 8 bits), duplicadas en paquetes | ~21,000 | ~6% |
 | Efectos VAG, duplicados en paquetes | ~10,000 | ~3% |
 | Motor, bytecode, texto, índices | ~2,000 | <1% |
-| **Total estimado** | **~116,000** | **~35%** |
-Margen libre: ~65%. Se confirma con números reales en la Fase 9.
+| **Total estimado** | **~76,000** | **~23%** |
+Margen libre: ~77%. Se confirma con números reales en la Fase 9. Nota: el peso de la música en el CD no afecta los tiempos de carga (se reproduce en flujo continuo); el beneficio de bajarlo es dejar más espacio para duplicar recursos en paquetes contiguos y un `.bin` más pequeño.
 
 ## Observación para la Fase 4
 - Los personajes se componen en capas (cuerpo + cara): en el prototipo Anon aparece sin cara porque se usó solo `anon neutral` base. El pipeline debe pre-componer cuerpo y expresión en la PC.

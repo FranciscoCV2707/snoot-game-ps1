@@ -13,7 +13,7 @@ SDK_BIN = Path(r"C:\msys64\usr\local\psn00bsdk\bin")
 OST = ROOT / "original" / "game" / "audio" / "OST"
 WORK = ROOT / "build" / "xa_test"
 SRC = Path(__file__).resolve().parent
-TRACKS = 8
+TRACKS = 16  # 37.8 kHz mono: 16 carriles a 2x
 SECONDS = 60
 
 XML = """<?xml version="1.0" encoding="utf-8"?>
@@ -47,11 +47,11 @@ def make_music():
     for channel, track in enumerate(tracks):
         wav = WORK / f"t{channel}.wav"
         xa = WORK / f"t{channel}.xa"
-        run(["ffmpeg", "-y", "-loglevel", "error", "-t", SECONDS, "-i", track, "-ar", 37800, "-ac", 2, wav])
-        run([SDK_BIN / "psxavenc.exe", "-t", "xa", "-f", 37800, "-c", 2, "-b", 4, "-F", 1, "-C", channel, "-q", wav, xa])
+        run(["ffmpeg", "-y", "-loglevel", "error", "-t", SECONDS, "-i", track, "-ar", 37800, "-ac", 1, wav])
+        run([SDK_BIN / "psxavenc.exe", "-t", "xa", "-f", 37800, "-c", 1, "-b", 4, "-F", 1, "-C", channel, "-q", wav, xa])
         encoded.append(xa)
         print("canal", channel, track.name)
-    data, slots = interleave(encoded)
+    data, slots = interleave(encoded, TRACKS)
     (WORK / "music.xa").write_bytes(data)
     print(f"music.xa: {slots} ranuras, {len(data) // 2336} sectores")
 

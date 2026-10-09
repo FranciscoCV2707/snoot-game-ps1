@@ -26,8 +26,8 @@
 
 #define SCREEN_XRES 320
 #define SCREEN_YRES 240
-#define NUM_CHANNELS 8
-#define SECTORS_PER_SLOT 8
+#define NUM_CHANNELS 16      /* 37.8 kHz mono a 2x: 16 carriles entrelazados */
+#define SECTORS_PER_SLOT 16
 #define LOAD_BUF_BYTES (400 * 1024)
 
 static DISPENV disp[2];
