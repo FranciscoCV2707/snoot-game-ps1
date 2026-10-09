@@ -149,7 +149,7 @@ static const Image *load_image(int image_id)
 			return &entries[i].img;
 		}
 
-	sprintf(path, "\\I%04d.IMG", image_id);
+	sprintf(path, "\\DATA\\I%04d.IMG", image_id);
 	size = cd_read_file(path, file_buf, FILE_BYTES);
 	if (size < 24 + 512 + 8) {
 		printf("res: no se pudo leer %s\n", path);

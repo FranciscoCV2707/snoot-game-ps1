@@ -28,7 +28,9 @@ XML = """<?xml version="1.0" encoding="utf-8"?>
 		<directory_tree>
 			<file name="SYSTEM.CNF" type="data" source="system.cnf" />
 			<file name="SNOOT.EXE" type="data" source="snoot.exe" />
+			<dir name="DATA">
 {files}
+			</dir>
 			<dummy sectors="256" />
 		</directory_tree>
 	</track>

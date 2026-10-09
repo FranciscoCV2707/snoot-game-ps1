@@ -17,7 +17,7 @@
 #include "video.h"
 #include "vm.h"
 
-#define BOX_Y 182
+#define BOX_Y 168
 #define MAX_SPEAKERS 48
 #define MAX_POSITIONS 48
 #define CHAPTER_BYTES (48 * 1024)
@@ -54,9 +54,26 @@ static uint32_t endings_mask, bonus_mask;
 static int menu_cursor, menu_top, menu_order[VM_MENU_MAX];
 static uint32_t rng_state = 12345;
 
+/* Diagnostico de arranque sin fuente: una barra verde por etapa superada y una roja si fallo */
+static int boot_stage;
+
+static void boot_screen(int failed)
+{
+	int i, n;
+
+	for (i = 0; i < 2; i++) {
+		for (n = 0; n < boot_stage; n++)
+			video_rect(LAYER_TEXT, 20 + n * 24, 100, 20, 40, 0, 200, 0, 0);
+		if (failed)
+			video_rect(LAYER_TEXT, 20 + boot_stage * 24, 100, 20, 40, 220, 0, 0, 0);
+		video_flip();
+	}
+}
+
 static void fatal(const char *msg)
 {
 	printf("ERROR: %s\n", msg);
+	boot_screen(1);
 	for (;;)
 		VSync(0);
 }
@@ -93,7 +110,7 @@ static void seen_set(int gid)
 static void load_game_tables(void)
 {
 	const uint8_t *p = file_buf;
-	int size = cd_read_file("\\GAME.BIN", file_buf, sizeof(file_buf)), i;
+	int size = cd_read_file("\\DATA\\GAME.BIN", file_buf, sizeof(file_buf)), i;
 
 	if (size < 12 || memcmp(p, "GAM1", 4) != 0)
 		fatal("GAME.BIN");
@@ -130,7 +147,7 @@ static int chapter_loader(void *user, int chapter, VmChapter *out)
 	int size;
 
 	(void)user;
-	sprintf(path, "\\C%02d.VNB", chapter);
+	sprintf(path, "\\DATA\\C%02d.VNB", chapter);
 	size = cd_read_file(path, chapter_buf, CHAPTER_BYTES);
 	if (size < 32 || memcmp(chapter_buf, "VNB1", 4) != 0) {
 		printf("capitulo %d no disponible\n", chapter);
@@ -143,7 +160,7 @@ static int chapter_loader(void *user, int chapter, VmChapter *out)
 	out->anim_count = rd16(chapter_buf + 18);
 	out->anims = chapter_buf + rd32(chapter_buf + 24);
 
-	sprintf(path, "\\T%02d.TXT", chapter);
+	sprintf(path, "\\DATA\\T%02d.TXT", chapter);
 	size = cd_read_file(path, text_buf, TEXT_BYTES);
 	if (size < 2) {
 		printf("texto %d no disponible\n", chapter);
@@ -275,7 +292,7 @@ static void draw_box(void)
 	video_rect(LAYER_BOX, 0, BOX_Y, SCREEN_W, SCREEN_H - BOX_Y, 0, 0, 0, 1);
 	if (sp->name[0])
 		font_draw(LAYER_TEXT, 8, BOX_Y + 2, sp->name, sp->r, sp->g, sp->b);
-	text_draw(&run, LAYER_TEXT, 8, BOX_Y + 16, 128, 128, 128);
+	text_draw(&run, LAYER_TEXT, 8, BOX_Y + 15, 128, 128, 128);
 	if (text_page_done(&run) && ((video_frames() / 20) & 1))
 		video_triangle_down(LAYER_TEXT, 290, SCREEN_H - 24, 10, 7, 255, 255, 255);
 }
@@ -438,15 +455,23 @@ int main(int argc, const char *argv[])
 	video_init();
 	cd_init();
 	input_init();
+	boot_stage = 1;
+	boot_screen(0);
 	{
-		int size = cd_read_file("\\FONT.BIN", chapter_buf, CHAPTER_BYTES);
+		int size = cd_read_file("\\DATA\\FONT.BIN", chapter_buf, CHAPTER_BYTES);
 
 		if (size < 0 || font_load(chapter_buf, size) != 0)
 			fatal("FONT.BIN");
 	}
+	boot_stage = 2;
+	boot_screen(0);
 	load_game_tables();
+	boot_stage = 3;
+	boot_screen(0);
 	vm_init(&vm, &host);
 	restart();
+	boot_stage = 4;
+	boot_screen(0);
 	vb_start = VSync(-1);
 
 	for (;;) {
