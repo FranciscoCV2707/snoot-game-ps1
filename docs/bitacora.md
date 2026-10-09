@@ -7,8 +7,8 @@ Hecho:
 - Juego copiado a `original/`.
 - Plantilla de PSn00bSDK compilada a `.bin/.cue` (con el ajuste de rutas descrito en `entorno.md`).
 
+- Defender excluye `C:\dev`; hola mundo verificado en DuckStation y PCSX-Redux (BIOS real).
+
 Pendiente:
-- Exclusión de Defender para `C:\dev` (administrador).
-- Probar `template.cue` en DuckStation y PCSX-Redux.
-- Terminal nueva para que `check_env.py` salga todo en OK.
+- Confirmar `check_env.py` todo en OK en una terminal nueva.
 - Fase 1 (auditoría).

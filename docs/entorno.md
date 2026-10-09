@@ -37,5 +37,6 @@ https://git.cavemanon.xyz/Cavemanon/SnootGame. `original/` está en `.gitignore`
   se expande a `C:/...` y mkpsxiso 2.10 lo concatena mal (`build/C:/...`). Solución: en el XML
   usar rutas relativas al directorio de build (copiar los archivos allí). Aplicar lo mismo en `build.py`.
 - Prueba "hola mundo": `C:\dev\hello-ps1\build\template.cue` (generado desde la plantilla, 1056 sectores).
-- Pendiente manual: exclusión de Windows Defender para `C:\dev` (requiere administrador).
-- Pendiente manual: abrir `template.cue` en DuckStation y PCSX-Redux y confirmar que arranca.
+- Exclusión de Windows Defender para `C:\dev`: hecha.
+- `template.cue` verificado en DuckStation y PCSX-Redux. En PCSX-Redux hay que usar una BIOS real
+  (SCPH1001); con OpenBIOS mostró un cubo 3D propio en vez del disco.
