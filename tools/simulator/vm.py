@@ -30,6 +30,8 @@ class Coverage:
     errors: list = field(default_factory=list)
     max_sprites: int = 0
     peak: tuple = None
+    vram_peak: int = 0
+    vram_peak_at: tuple = None
     max_depth: int = 0
     max_stack: int = 0
     states: int = 0
@@ -43,7 +45,7 @@ class VM:
         self.cov = cov
 
     def initial(self, chapter, pc=0):
-        return {"ch": chapter, "pc": pc, "vars": [0] * NUM_VARS, "calls": [], "sprites": {}, "bg": 0, "stack": []}
+        return {"ch": chapter, "pc": pc, "vars": [0] * NUM_VARS, "calls": [], "sprites": {}, "bg": 0, "stack": [], "z": {}}
 
     def run(self, st, choose=None):
         """Ejecuta hasta MENU/END. Devuelve ('menu', info) o ('end', None). Modifica `st`."""
@@ -73,11 +75,19 @@ class VM:
                 self.check_image(a["image"], ch, pc)
                 st["bg"] = a["image"]
                 st["sprites"] = {}
+                st["z"] = {}
                 self.note_image(a["image"])
             elif name == "SHOW":
                 self.check_image(a["image"], ch, pc)
                 st["sprites"][a["tag"]] = a["image"]
+                if a["z"] != -128 or a["tag"] not in st["z"]:
+                    st["z"][a["tag"]] = a["z"] if a["z"] != -128 else 0
                 real = sum(1 for im in st["sprites"].values() if p.images[im]["recipe"]["op"] != "solid")
+                if p.image_bytes:
+                    used = self.vram_in_use(st)
+                    if used > cov.vram_peak:
+                        cov.vram_peak = used
+                        cov.vram_peak_at = (ch.name, pc, real)
                 if real > cov.max_sprites:
                     cov.max_sprites = real
                     cov.peak = (ch.name, pc, [p.images[im]["names"][0] for im in st["sprites"].values()
@@ -92,6 +102,7 @@ class VM:
                     self.note_image(a["first"] + i)
             elif name == "HIDE":
                 st["sprites"].pop(a["tag"], None)
+                st["z"].pop(a["tag"], None)
             elif name == "MARK_SEEN":
                 self.note_image(a["image"])
             elif name == "MUSIC_PLAY" or name == "MUSIC_QUEUE":
@@ -149,6 +160,14 @@ class VM:
             if len(stack) > MAX_STACK:
                 raise SimError(f"{ch.name}@{pc}: pila de expresiones desbordada")
 
+    def vram_in_use(self, st):
+        """Bytes de sprites que de verdad hacen falta en VRAM: lo que queda tapado por una imagen opaca de pantalla
+        completa (mostrada con `show` mas arriba) no se dibuja y no necesita estar cargado."""
+        p = self.p
+        items = [(st["z"].get(tag, 0), im) for tag, im in st["sprites"].items() if p.images[im]["recipe"]["op"] != "solid"]
+        opaque_z = max((z for z, im in items if p.image_kind.get(im) == 0), default=None)
+        return sum(p.image_bytes.get(im, 0) for z, im in items if opaque_z is None or z >= opaque_z)
+
     def push_call(self, st, ch, pc):
         if len(st["calls"]) >= MAX_CALL_DEPTH:
             raise SimError("pila de CALL desbordada")
@@ -200,6 +219,6 @@ def explore(program, starts):
         cov.states = len(visited)
         for _, target in info:
             nxt = {"ch": st["ch"], "pc": target, "vars": list(st["vars"]), "calls": list(st["calls"]),
-                   "sprites": dict(st["sprites"]), "bg": st["bg"], "stack": []}
+                   "sprites": dict(st["sprites"]), "bg": st["bg"], "stack": [], "z": dict(st["z"])}
             work.append(nxt)
     return cov

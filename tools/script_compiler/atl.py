@@ -63,10 +63,8 @@ def curve_for(warper):
     return None
 
 
-@lru_cache(maxsize=None)
-def image_size(project, key):
-    """Tamano en pixeles originales (1920x1080) de una imagen, para convertir xpos/xcenter a xalign."""
-    recipe, _ = project.images.canonical(key)
+def recipe_size(recipe):
+    """Tamano en pixeles originales de una receta de imagen (1920x1080 si no se sabe)."""
     while recipe and recipe.get("op") == "effect" and recipe.get("src"):
         recipe = recipe["src"]
     if recipe and recipe.get("op") == "composite" and recipe.get("size"):
@@ -80,6 +78,13 @@ def image_size(project, key):
         except OSError:
             pass
     return SCREEN_W, SCREEN_H
+
+
+@lru_cache(maxsize=None)
+def image_size(project, key):
+    """Tamano en pixeles originales (1920x1080) de una imagen, para convertir xpos/xcenter a xalign."""
+    recipe, _ = project.images.canonical(key)
+    return recipe_size(recipe)
 
 
 class State:
@@ -416,7 +421,7 @@ def decimate(keys):
     return keys
 
 
-def compile_anim(lowerer, node, extra_transforms, reveal=None, atl_first=False):
+def compile_anim(lowerer, node, extra_transforms, reveal=None, atl_first=False, slideshow=None):
     """Compila el ATL de un `show`. Devuelve (id 1-based de animacion o 0, clave final de imagen o None).
 
     reveal: proporcion alto de la mascara / alto del contenido cuando la mascara crece en vertical (AlphaMask).
@@ -424,7 +429,7 @@ def compile_anim(lowerer, node, extra_transforms, reveal=None, atl_first=False):
     sequences = [lowerer.p.transforms[name] for name in extra_transforms]
     if node.atl:
         sequences.insert(0, node.atl) if atl_first else sequences.append(node.atl)
-    if not sequences:
+    if not sequences and not slideshow:
         return 0, None
     key = lowerer.reg.last_key.get(node.tag)
     w, h = image_size(lowerer.p, key) if key else (SCREEN_W, SCREEN_H)
@@ -443,6 +448,14 @@ def compile_anim(lowerer, node, extra_transforms, reveal=None, atl_first=False):
     t = 0.0
     for seq in sequences:
         t, state = comp.run(seq, t, state)
+    if slideshow:
+        clock = 0.0
+        for k, frame in enumerate(slideshow["frames"]):
+            if k:
+                comp.events.append(("key", clock, frame, slideshow["dissolve"][k]))
+            clock += slideshow["times"][k]
+        comp.loop = comp.loop or slideshow["loop"]
+        comp.duration = max(comp.duration, clock)
     lowerer.reg.pos_state[node.tag] = {k: v for k, v in state.__dict__.items()}
     for w_ in sorted(set(warnings)):
         lowerer.warn(node, w_)
@@ -454,7 +467,7 @@ def compile_anim(lowerer, node, extra_transforms, reveal=None, atl_first=False):
             swaps.append((int(round(ev[1] * FPS)), ids[0], 2, len(ids)))
             continue
         _, ev_t, words, dissolve = ev
-        new_key = lowerer.resolve_swap(words, node.tag, prev, node)
+        new_key = words if ev[0] == "key" else lowerer.resolve_swap(words, node.tag, prev, node)
         iid, flip = lowerer.reg.image_id(new_key)
         swaps.append((int(round(ev_t * FPS)), iid, 1 if flip else 0, dissolve))
         prev = final_key = new_key

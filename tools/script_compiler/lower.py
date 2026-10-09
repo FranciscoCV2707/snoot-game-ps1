@@ -77,6 +77,17 @@ class Registry:
         self.last_key = {}
         self.pos_state = {}
         self.camera = {"zoom": 1.0, "x": 0.0, "y": 0.0, "blur": 0.0}
+        self.visible = {}      # id de imagen -> [x0, y0, x1, y1] visible en pixeles originales, o None si hace falta completa
+
+    def mark_full(self, iid):
+        self.visible[iid] = None
+
+    def mark_rect(self, iid, rect):
+        if iid in self.visible and self.visible[iid] is None:
+            return
+        old = self.visible.get(iid)
+        self.visible[iid] = list(rect) if old is None else [min(old[0], rect[0]), min(old[1], rect[1]),
+                                                           max(old[2], rect[2]), max(old[3], rect[3])]
 
     def image_id(self, key):
         recipe, flip = self.project.images.canonical(key)
@@ -318,6 +329,7 @@ class Lowerer:
             target = key if value <= 0 else images.add_blur(key, value)
             iid, tflip = self.reg.image_id(target)
             if tag == "_scene":
+                self.reg.mark_full(iid)
                 self.emit("BACKGROUND", n.line, image=iid)
             else:
                 self.emit("SHOW", n.line, tag=self.reg.tag(tag), image=iid, pos=POS_KEEP, z=Z_KEEP,
@@ -453,7 +465,15 @@ class Lowerer:
         if key is None:
             raise CompileError(f"{n.file}:{n.line}: fondo no resuelto: {' '.join(n.image)}")
         iid, flip = self.reg.image_id(key)
-        self.emit("SCENE", n.line, image=iid)
+        anim = 0
+        spec = self.p.images.animation_of(key)
+        if spec:
+            import types
+            node = types.SimpleNamespace(tag="_scene", atl=None, at=[], line=n.line, file=n.file)
+            self.reg.last_key["_scene"] = key
+            anim, _ = atl_module.compile_anim(self, node, [], slideshow=spec)
+        self.reg.mark_full(iid)
+        self.emit("SCENE", n.line, image=iid, anim=anim)
         state = VState()
         state.tags["_scene"] = {key}
         if n.with_:
@@ -488,15 +508,60 @@ class Lowerer:
                 extra_transforms.append(name)
             elif name not in ("vpunch", "hpunch", "center"):
                 self.warn(n, f"transform desconocido: {name}")
-        anim, final = atl_module.compile_anim(self, n, extra_transforms)
+        anim, final = atl_module.compile_anim(self, n, extra_transforms, slideshow=self.p.images.animation_of(key))
         flags = FLAG_FLIP if flip else 0
         self.emit("SHOW", n.line, tag=self.reg.tag(n.tag), image=iid, pos=pos, z=z, flags=flags, anim=anim)
+        self.track_visibility(n.tag, iid, pos, anim, bool(flip))
         state.tags[n.tag] = {final or key}
         if final:
             self.reg.last_key[n.tag] = final
         if n.with_:
             self.transition(n.with_, n)
         return state
+
+    def track_visibility(self, tag, iid, pos, anim, flip):
+        """Registra la zona de la imagen que llega a verse en pantalla (para recortar el resto en la Fase 4)."""
+        from tools.script_compiler.atl import SCREEN_H, SCREEN_W, recipe_size
+        if self.dry:
+            return
+        aligns, full = [], False
+        ids = [iid]
+        if anim:
+            _, keys, swaps = self.ir.anims[anim - 1]
+            for k in keys:
+                if k[5] != 64 or k[6] != 64 or k[7] != 0 or k[11] != 255:
+                    full = True      # zoom, giro, espejo o recorte animados: se conserva la imagen completa
+                aligns.append((k[1] / 256.0, k[2] / 256.0))
+            ids += [sw[1] for sw in swaps if not sw[2] & 2]
+        elif pos != POS_NONE and pos != POS_KEEP:
+            info = self.p.position_info[pos]
+            aligns.append((info["xalign"], info["yalign"]))
+        else:
+            previous = self.reg.pos_state.get(tag)
+            if previous:
+                aligns.append((previous.get("xalign", 0.5), previous.get("yalign", 1.0)))
+            else:
+                aligns.append((0.5, 1.0))
+        if pos != POS_NONE and pos != POS_KEEP and not anim:
+            info = self.p.position_info[pos]
+            self.reg.pos_state[tag] = {"xalign": info["xalign"], "yalign": info["yalign"], "xpos": None, "ypos": None}
+        for image_id in ids:
+            if full:
+                self.reg.mark_full(image_id)
+                continue
+            w, h = recipe_size(self.reg.images[image_id]["recipe"])
+            for xa, ya in aligns:
+                x = xa * (SCREEN_W - w)
+                y = ya * (SCREEN_H - h)
+                c0, c1 = max(0.0, -x), min(w, SCREEN_W - x)
+                r0, r1 = max(0.0, -y), min(h, SCREEN_H - y)
+                if c1 <= c0 or r1 <= r0:
+                    continue          # fuera de pantalla en esta clave
+                if flip:
+                    c0, c1 = w - c1, w - c0
+                margin = 0.04
+                self.reg.mark_rect(image_id, (max(0, c0 - margin * w), max(0, r0 - margin * h),
+                                              min(w, c1 + margin * w), min(h, r1 + margin * h)))
 
     def resolve_swap(self, words, tag, prev_key, node):
         """Imagen a la que cambia un ATL (`"anon happy" with dissolve`), con los atributos actuales del tag."""
@@ -720,6 +785,8 @@ class Lowerer:
         elif name == "showCG":
             keys = [self.p.images.resolve((f"text{i}",)) for i in range(1, 10)]
             ids = [self.reg.image_id(k)[0] for k in keys]
+            for i in ids:
+                self.reg.mark_full(i)
             if ids != list(range(ids[0], ids[0] + 9)):
                 raise CompileError("las imagenes text1..text9 no tienen IDs consecutivos")
             self.emit("SHOW_RANDOM", node.line, tag=self.reg.tag("textlayer"), first=ids[0], count=9, flags=0)

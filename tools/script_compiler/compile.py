@@ -57,6 +57,14 @@ def register_gallery(project, registry):
     return entries
 
 
+def register_ui(project, registry):
+    """Imagenes de la interfaz propia: logo del titulo y candado de los capitulos extra (D4/D5)."""
+    project.images.recipes[("ui", "logo")] = {"op": "file", "path": "gui/snootgame.png"}
+    project.images.recipes[("ui", "lock")] = {"op": "generated", "name": "lock"}
+    for key in (("ui", "logo"), ("ui", "lock")):
+        registry.image_id(key)
+
+
 def story_insts(project, registry):
     """STORY.VNB: valores iniciales, capitulos base, eleccion de ruta y cadena de la ruta (de src/storyline.rpy)."""
     insts = []
@@ -117,16 +125,16 @@ def story_insts(project, registry):
     label("story.credits.roll")
     emit("SPECIAL", id=2)
     emit("MUSIC_STOP", fade=50)
-    emit("SCENE", image=image("black"))
+    emit("SCENE", image=image("black"), anim=0)
     emit("TRANSITION", type=1, a=180, b=0, c=0)
     emit("PAUSE", frames=120, flags=1)
     for num, name in ((3, "c10"), (4, "golden ending")):
         cmp("ending_route_number", "==", num)
         emit("JUMP_IF_FALSE", target=f"story.credits.n{num}")
-        emit("SCENE", image=image(name))
+        emit("SCENE", image=image(name), anim=0)
         emit("TRANSITION", type=1, a=90, b=0, c=0)
         emit("PAUSE", frames=1200, flags=1)
-        emit("SCENE", image=image("black"))
+        emit("SCENE", image=image("black"), anim=0)
         emit("TRANSITION", type=1, a=120, b=0, c=0)
         emit("PAUSE", frames=60, flags=1)
         label(f"story.credits.n{num}")
@@ -169,6 +177,7 @@ def compile_all(out=OUT):
         return project, registry, result
     result.text_stats = paginate_strings(result)
     gallery = register_gallery(project, registry)
+    register_ui(project, registry)
     story = story_insts(project, registry)
 
     # --- primera pasada: offsets de etiquetas de cada capitulo
@@ -212,6 +221,7 @@ def compile_all(out=OUT):
             continue
         entry = dict(img)
         entry["gallery"] = gallery_ids.get(i)
+        entry["visible"] = registry.visible.get(i)
         entry["ending"] = next((v for nm in img["names"] for k, v in ending_names.items() if nm == k), None)
         images.append(entry)
     entries = {n: {"chapter": project.label_chapter[n], "offset": layouts[project.label_chapter[n]][0][n]}

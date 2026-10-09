@@ -9,7 +9,7 @@ OPS = {
     "SAY": (0x01, "BH", ("speaker", "text")),
     "SAYX": (0x02, "BH", ("speaker", "text")),
     "TEXTBOX": (0x03, "B", ("mode",)),
-    "SCENE": (0x10, "H", ("image",)),
+    "SCENE": (0x10, "HH", ("image", "anim")),
     "SHOW": (0x11, "BHBbBH", ("tag", "image", "pos", "z", "flags", "anim")),
     "HIDE": (0x12, "B", ("tag",)),
     "TRANSITION": (0x13, "BHHH", ("type", "a", "b", "c")),

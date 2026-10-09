@@ -2,7 +2,7 @@
 
 Ultima actualizacion: 2026-10-08
 
-## Fase actual: 3 terminada; siguiente: 4 - Pipeline de imagenes
+## Fase actual: 4 hecha (pendiente de tu revision del arte); siguiente: 5 - Pipeline de audio
 
 ## Hecho
 ### Fase 0 - Entorno (terminada)
@@ -38,12 +38,19 @@ Ultima actualizacion: 2026-10-08
 - [x] Efectos fieles: camera (zoom y desenfoque), AlphaMask, cambios de imagen y sonidos dentro de ATL, transiciones de movimiento y fundido por blanco
 - [x] 34 tests; docs/compilador.md y build/reports/cobertura.md
 
+### Fase 4 - Pipeline de imagenes (hecha, pendiente de tu visto bueno al arte)
+- [x] 653 imagenes convertidas (232 fondos/CG, 415 sprites con 43 paletas, 6 colores solidos) en 13 segundos
+- [x] 21 MB sin comprimir, 9.9 MB en disco (5,046 sectores, 1.5% del CD); sprite medio 19 KB
+- [x] Pico de sprites visibles a la vez: 215 KB (limite 320 KB), descontando lo tapado por imagenes opacas
+- [x] Camara, mascaras, pases de diapositivas, capas animadas de telefono y video `fang tail` (10 fotogramas, 305 KB)
+- [x] Logo del titulo, candado de extras e icono de memory card; docs/formato-img.md; 38 tests
+- [ ] Tu revision: build/reports/arte/fondos_1.html (y sprites_N.html) y build/reports/arte/fang_tail.gif
+
 ## Siguiente
 - [ ] Tu revision de docs/decisiones.md, docs/bytecode.md y docs/presupuesto-memoria.md
-- [ ] Fase 4 - Pipeline de imagenes (usa build/data/meta.json: 615 imagenes con receta)
+- [ ] Fase 5 - Pipeline de audio
 
 ## Pendiente (fases siguientes)
-- [ ] Fase 4 - Pipeline de imagenes
 - [ ] Fase 5 - Pipeline de audio
 - [ ] Fase 6 - Motor PS1: base
 - [ ] Fase 7 - Motor PS1: interprete y escenas

@@ -76,6 +76,13 @@ class Program:
             for lid, off in ch.labels:
                 self.label_at[(idx, off)] = self.label_names[lid]
         self.images = self.meta["images"]
+        out = self.dir / "images_out.json"
+        self.image_bytes = {}
+        self.image_kind = {}
+        if out.exists():
+            data = json.loads(out.read_text(encoding="utf-8"))
+            self.image_bytes = {int(k): v.get("w", 0) * v.get("h", 0) for k, v in data.items()}
+            self.image_kind = {int(k): v.get("kind") for k, v in data.items()}
         self.vars_by_index = {v: k for k, v in self.meta["vars"].items()}
 
     def string(self, chapter, local):

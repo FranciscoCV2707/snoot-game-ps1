@@ -55,6 +55,7 @@ def build_report(program, result=None):
               f"| Elementos de galeria alcanzables | {len(gallery) - len(gallery_unreached)} de {len(gallery)} |",
               f"| Pistas/efectos usados | {len(cov.audio_played)} de {len(meta['audio'])} |",
               f"| Sprites simultaneos (maximo) | {cov.max_sprites} (limite 12; escena de multitud en x6) |",
+              f"| Pico de VRAM de sprites a la vez | {cov.vram_peak // 1024} KB de ~320 KB disponibles ({cov.vram_peak_at}) |",
               f"| Profundidad de CALL (maximo) | {cov.max_depth} (limite 8) |",
               f"| Pila de expresiones (maximo) | {cov.max_stack} (limite 16) |",
               f"| Errores | {len(cov.errors)} |", ""]

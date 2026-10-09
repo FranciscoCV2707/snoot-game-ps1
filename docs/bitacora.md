@@ -1,5 +1,15 @@
 # Bitácora
 
+## 2026-10-08 - Fase 4 (pipeline de imagenes)
+Hecho:
+- `tools/images/render.py` y `convert.py`: recetas -> IMG1 (8 bits, LZ4), paletas por carpeta, recorte de zona visible, alfa tramado, media resolucion para imagenes enormes.
+- El compilador aporta la zona visible de cada sprite, pases de diapositivas, video como 10 fotogramas, camara y mascaras.
+- Reportes en `build/reports/imagenes.md` y hojas de contacto en `build/reports/arte/`.
+
+Pendiente:
+- Revision del arte por el usuario (hojas de contacto, GIF del video, logo).
+- Fase 5 (audio).
+
 ## 2026-10-08 - Fase 3 (compilador y simulador)
 Hecho:
 - `tools/script_compiler/` (parser, imagenes, traducciones, lowering, ATL, ensamblador) y `tools/simulator/` (VM, exploracion, reporte).
