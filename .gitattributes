@@ -1,0 +1,13 @@
+* text=auto eol=lf
+*.png  binary
+*.webp binary
+*.jpg  binary
+*.ogg  binary
+*.mp3  binary
+*.wav  binary
+*.bin  binary
+*.TIM  binary
+*.VNB  binary
+*.XA   binary
+*.VAG  binary
+*.ps1  text eol=crlf
