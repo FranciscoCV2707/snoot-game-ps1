@@ -83,6 +83,19 @@ void video_rect(int layer, int x, int y, int w, int h, int r, int g, int b, int 
 		video_set_tpage(layer, 0, 0, 0, 0);     /* mezcla 50% */
 }
 
+/* Triangulo relleno apuntando hacia abajo (indicador de "presiona X"), dibujado con una primitiva en vez de un glifo */
+void video_triangle_down(int layer, int x, int y, int w, int h, int r, int g, int b)
+{
+	POLY_F3 *t = (POLY_F3 *)video_alloc(sizeof(POLY_F3));
+
+	if (!t)
+		return;
+	setPolyF3(t);
+	setXY3(t, x, y, x + w, y, x + w / 2, y + h);
+	setRGB0(t, r, g, b);
+	video_add(layer, t);
+}
+
 void video_flip(void)
 {
 	DrawSync(0);
