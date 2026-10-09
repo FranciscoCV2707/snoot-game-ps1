@@ -53,7 +53,18 @@ def register_gallery(project, registry):
             entry = {"tab": tab["tab_name"], "name": item["name"], "image": item["image"], "id": None}
             if key is not None:
                 entry["id"] = registry.image_id(key)[0]
+                spec = project.images.animation_of(key)
+                if spec and spec.get("patch"):     # video: la galeria necesita los parches y sus tiempos
+                    entry["movie"] = {"patches": [registry.image_id(k)[0] for k in spec["frames"]], "times": spec["times"]}
             entries.append(entry)
+    # pestana "Animations" (se agrega por codigo en src/cg_gallery.rpy): el video fang tail con su miniatura
+    movie_key = ("fang_tail_movie",)
+    if movie_key in project.images.recipes:
+        spec = project.images.animation_of(movie_key)
+        project.images.recipes[("ui", "tail_thumb")] = {"op": "file", "path": "images/animations/fang tail thumbnail.webp"}
+        entries.append({"tab": "Animations", "name": "fang_tail_movie", "image": "fang_tail_movie",
+                        "id": registry.image_id(movie_key)[0], "thumb": registry.image_id(("ui", "tail_thumb"))[0],
+                        "movie": {"patches": [registry.image_id(k)[0] for k in spec["frames"]], "times": spec["times"]}})
     return entries
 
 
@@ -214,6 +225,7 @@ def compile_all(out=OUT):
 
     ending_names = {"e1of4": 1, "e2of4": 2, "e3of4": 3, "e4of4": 4}
     gallery_ids = {e["id"]: i for i, e in enumerate(g for g in gallery if g["id"] is not None)}
+    movies = {g["id"]: g["movie"] for g in gallery if g.get("movie")}
     images = []
     for i, img in enumerate(registry.images):
         if img is None:
@@ -222,6 +234,7 @@ def compile_all(out=OUT):
         entry = dict(img)
         entry["gallery"] = gallery_ids.get(i)
         entry["visible"] = registry.visible.get(i)
+        entry["movie"] = movies.get(i)
         entry["ending"] = next((v for nm in img["names"] for k, v in ending_names.items() if nm == k), None)
         images.append(entry)
     entries = {n: {"chapter": project.label_chapter[n], "offset": layouts[project.label_chapter[n]][0][n]}

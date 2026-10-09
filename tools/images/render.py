@@ -52,7 +52,7 @@ def generated(name):
     raise ValueError(f"imagen generada desconocida: {name}")
 
 
-def video_frame(path, index):
+def video_frame(path, index, crop=None):
     """Fotograma de un video a su resolucion original."""
     import io
     import shutil
@@ -60,7 +60,11 @@ def video_frame(path, index):
     ffmpeg = shutil.which("ffmpeg") or str(Path.home() / "AppData/Local/Microsoft/WinGet/Links/ffmpeg.exe")
     data = subprocess.run([ffmpeg, "-loglevel", "error", "-i", str(GAME / path), "-vf", f"select=eq(n\\,{index})", "-frames:v", "1",
                            "-f", "image2pipe", "-vcodec", "png", "-"], capture_output=True, check=True).stdout
-    return Image.open(io.BytesIO(data)).convert("RGBA")
+    img = Image.open(io.BytesIO(data)).convert("RGBA")
+    if crop:
+        x, y, w, h = crop
+        img = img.crop((x, y, x + w, y + h))
+    return img
 
 
 def parse_color(text):
@@ -110,7 +114,7 @@ def render(recipe):
     if op == "solid":
         return Image.new("RGBA", FULL, parse_color(recipe["color"]))
     if op == "videoframe":
-        return video_frame(recipe["path"], recipe["index"])
+        return video_frame(recipe["path"], recipe["index"], recipe.get("crop"))
     if op == "generated":
         return generated(recipe["name"])
     if op == "composite":

@@ -59,3 +59,39 @@ def select_frames(path, wanted=FRAMES_WANTED):
     total = len(frames) / rate
     times = [(starts[k + 1] if k + 1 < len(starts) else total) - starts[k] for k in range(len(starts))]
     return {"frames": [(i, i / rate) for i in best], "times": times}
+
+
+PATCH_GAP = 2          # un cuadro cada 2 como minimo durante el movimiento (12 por segundo)
+PATCH_THRESHOLD = 0.15  # cambio medio minimo respecto al cuadro mostrado para elegir uno nuevo
+PATCH_DIFF = 20         # diferencia por pixel (0-255) para considerar que algo cambio respecto al cuadro base
+PATCH_MARGIN = 2
+
+
+def select_patches(path, gap=PATCH_GAP, threshold=PATCH_THRESHOLD):
+    """Animacion por parches: cuadro base (el primero) y, para los cuadros elegidos, el rectangulo que difiere del base.
+
+    Devuelve {"frames": [(indice, (x0, y0, x1, y1) a 320x180 o None si es igual al base)], "times": [segundos]}.
+    El movimiento se muestrea a 24/gap cuadros por segundo; las pausas quedan como un solo cuadro largo.
+    """
+    frames = decode(Path(path))
+    rate = fps(Path(path))
+    chosen, last = [0], 0
+    for i in range(1, len(frames)):
+        if i - last >= gap and np.abs(frames[i] - frames[last]).mean() > threshold:
+            chosen.append(i)
+            last = i
+    h, w = frames.shape[1:3]
+    picks = []
+    for i in chosen:
+        ys, xs = np.where(np.abs(frames[i] - frames[0]).max(axis=2) > PATCH_DIFF)
+        if len(xs) == 0:
+            picks.append((i, None))
+            continue
+        rect = (max(0, int(xs.min()) - PATCH_MARGIN), max(0, int(ys.min()) - PATCH_MARGIN),
+                min(w, int(xs.max()) + 1 + PATCH_MARGIN), min(h, int(ys.max()) + 1 + PATCH_MARGIN))
+        rect = (rect[0] & ~1, rect[1], (rect[2] + 1) & ~1, rect[3])    # ancho par
+        picks.append((i, rect))
+    starts = [i / rate for i in chosen]
+    total = len(frames) / rate
+    times = [(starts[k + 1] if k + 1 < len(starts) else total) - starts[k] for k in range(len(starts))]
+    return {"frames": picks, "times": times}

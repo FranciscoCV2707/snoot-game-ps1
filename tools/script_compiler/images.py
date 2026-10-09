@@ -204,20 +204,27 @@ class ImageTable:
             self.tags.setdefault(key[0], []).append(key)
 
     def movie_frames(self, key):
-        """Fotogramas elegidos de un video (Movie): se registran como imagenes `videoframe` (decision D3)."""
+        """Video (Movie) como animacion por parches (D3): imagen base + un parche por cuadro elegido."""
         cache = self.__dict__.setdefault("_movies", {})
         if key in cache:
             return cache[key]
-        from tools.script_compiler.video import select_frames
-        recipe = self.recipes[key]
-        path = recipe["kwargs"].get("play")
-        picks = select_frames(GAME / path)
+        from tools.script_compiler.video import select_patches
+        path = self.recipes[key]["kwargs"].get("play")
+        picks = select_patches(GAME / path)
+        base_key = key + ("~base",)
+        self.recipes[base_key] = {"op": "videoframe", "path": path, "index": 0}
         frames = []
-        for n, (index, _) in enumerate(picks["frames"]):
-            fkey = key + (f"~f{n}",)
-            self.recipes[fkey] = {"op": "videoframe", "path": path, "index": index}
+        for n, (index, rect) in enumerate(picks["frames"]):
+            fkey = key + (f"~p{n}",)
+            layers = []
+            if rect:
+                x0, y0, x1, y1 = (v * 6 for v in rect)
+                layers = [{"pos": (x0, y0), "src": {"op": "videoframe", "path": path, "index": index,
+                                                  "crop": [x0, y0, x1 - x0, y1 - y0]}}]
+            self.recipes[fkey] = {"op": "composite", "size": (1920, 1080), "layers": layers}
             frames.append(fkey)
-        cache[key] = {"frames": frames, "times": picks["times"], "dissolve": [0] * len(frames), "loop": True}
+        cache[key] = {"frames": frames, "times": picks["times"], "dissolve": [0] * len(frames), "loop": True,
+                      "patch": True, "base": base_key}
         return cache[key]
 
     def animation_of(self, key):
@@ -298,8 +305,7 @@ class ImageTable:
             elif recipe["op"] == "slideshow":
                 recipe = self.recipes[tuple(recipe["frames"][0])]
             elif recipe["op"] == "movie":
-                frames = self.movie_frames(key)
-                recipe = self.recipes[frames["frames"][0]]
+                recipe = self.recipes[self.movie_frames(key)["base"]]
             else:
                 break
         return recipe, flip

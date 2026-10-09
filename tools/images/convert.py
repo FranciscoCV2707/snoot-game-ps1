@@ -46,12 +46,27 @@ def to555(rgb):
     return value or 0x0421       # 0x0000 es transparente en la PS1
 
 
-def noisy(arr):
-    return np.clip(arr.astype(np.int16) + dither_offsets(arr.shape) * DITHER_STRENGTH, 0, 255).astype(np.uint8)
+def dither_field(shape, origin=(0, 0)):
+    """Matriz de dither de la PS1 alineada a coordenadas absolutas de pantalla (los parches de video encajan con la base)."""
+    h, w = shape[:2]
+    ys = (np.arange(h) + origin[1]) % 4
+    xs = (np.arange(w) + origin[0]) % 4
+    return PSX_DITHER[np.ix_(ys, xs)][:, :, None]
 
 
-def quantize_with(rgb_arr, palette_img, dither=True):
-    source = noisy(rgb_arr) if dither else rgb_arr
+def noisy(arr, origin=(0, 0)):
+    return np.clip(arr.astype(np.int16) + dither_field(arr.shape, origin) * DITHER_STRENGTH, 0, 255).astype(np.uint8)
+
+
+def has_videoframe(recipe):
+    if recipe.get("op") == "videoframe":
+        return True
+    children = [recipe.get(k) for k in ("src", "content", "mask")] + [l["src"] for l in recipe.get("layers", [])]
+    return any(has_videoframe(c) for c in children if c)
+
+
+def quantize_with(rgb_arr, palette_img, dither=True, origin=(0, 0)):
+    source = noisy(rgb_arr, origin) if dither else rgb_arr
     return np.asarray(Image.fromarray(source, "RGB").quantize(palette=palette_img, dither=Image.Dither.NONE))
 
 
@@ -76,7 +91,7 @@ def phase1_run(task):
     alpha = np.asarray(img.split()[3])
     opaque = float((alpha >= 250).mean()) >= 0.97    # fondos con algun pixel semitransparente se aplanan sobre negro
     w, h = max(1, round(ow / scale)), max(1, round(oh / scale))
-    kind = KIND_BG if (opaque and ow >= 1000) else KIND_SPRITE
+    kind = KIND_BG if (opaque and ow >= 1000 and not has_videoframe(recipe)) else KIND_SPRITE
     if kind == KIND_BG:
         flat = Image.new("RGBA", img.size, (0, 0, 0, 255))
         flat.alpha_composite(img)
@@ -177,7 +192,7 @@ def phase3(task):
         flags = 0
     else:
         pal = palette_image(flat)
-        idx = quantize_with(rgb, pal, meta.get("name") not in NO_DITHER).astype(np.int16) + 1
+        idx = quantize_with(rgb, pal, meta.get("name") not in NO_DITHER, (meta.get("x", 0), meta.get("y", 0))).astype(np.int16) + 1
         if meta.get("semi", 0) > 0.30:    # efectos translucidos (vineta, brillos): el alfa se convierte en tramado
             tile = np.tile((PSX_DITHER + 4.5) / 8.0, (alpha.shape[0] // 4 + 1, alpha.shape[1] // 4 + 1))[:alpha.shape[0], :alpha.shape[1]]
             idx[(alpha / 255.0) <= tile] = 0
@@ -326,19 +341,46 @@ def make_memcard_icon(meta_json, summary):
     (DATA / "MCICON.BIN").write_bytes(struct.pack("<16H", *words) + bytes(packed))
 
 
+def load_img(path):
+    """Lee un archivo IMG1: devuelve (rgb, mascara, x, y) del bitmap, o None si esta vacio."""
+    data = Path(path).read_bytes()
+    size = struct.calcsize(HEADER)
+    header = struct.unpack_from(HEADER, data, 0)
+    kind, flags, x, y, w, h = header[1], header[2], header[5], header[6], header[7], header[8]
+    if kind not in (KIND_BG, KIND_SPRITE) or not w:
+        return None
+    words = struct.unpack_from("<256H", data, size)
+    raw_size = struct.unpack_from("<II", data, size + 512)[0]
+    idx = np.frombuffer(lz4.block.decompress(data[size + 520:], uncompressed_size=raw_size), np.uint8).reshape(h, w)
+    rgb, mask = decode(idx, words, flags)
+    return rgb, mask, x, y
+
+
 def write_video_preview(meta_json, table):
-    """GIF de la animacion del video `fang tail` con los fotogramas ya convertidos y sus tiempos."""
-    frames = []
+    """GIF de la animacion del video `fang tail`: base + parche de cada cuadro, con sus tiempos reales."""
+    base = patches = None
     for iid, im in enumerate(meta_json["images"]):
-        if im and "~f" in im["names"][0] and im["names"][0].startswith("fang_tail_movie"):
-            frames.append((iid, int(im["names"][0].split("~f")[1])))
-    if not frames:
+        for g in meta_json["gallery"]:
+            if g.get("movie") and g["id"] == iid:
+                base, patches = iid, g["movie"]
+    if base is None:
         return
-    frames.sort(key=lambda f: f[1])
-    spec = table.movie_frames(("fang_tail_movie",))
-    images = [Image.open(REPORT_DIR / f"{iid:04d}_c.jpg").convert("P", palette=Image.ADAPTIVE) for iid, _ in frames]
-    durations = [max(20, int(t * 1000)) for t in spec["times"]][:len(images)]
-    images[0].save(REPORT_DIR / "fang_tail.gif", save_all=True, append_images=images[1:], duration=durations, loop=0)
+    base_img = load_img(OUT / f"I{base:04d}.IMG")
+    frames = []
+    for pid in patches["patches"]:
+        canvas = np.zeros((180, 320, 3), np.uint8)
+        rgb, mask, x, y = base_img
+        canvas[y:y + rgb.shape[0], x:x + rgb.shape[1]] = rgb
+        patch = load_img(OUT / f"I{pid:04d}.IMG")
+        if patch:
+            prgb, pmask, px, py = patch
+            region = canvas[py:py + prgb.shape[0], px:px + prgb.shape[1]]
+            region[pmask] = prgb[pmask]
+        frame = Image.new("RGB", (320, 240))
+        frame.paste(Image.fromarray(canvas), (0, 30))
+        frames.append(crt_preview(frame, 320, 240).resize((640, 480)).convert("P", palette=Image.ADAPTIVE))
+    durations = [max(20, int(t * 1000)) for t in patches["times"]]
+    frames[0].save(REPORT_DIR / "fang_tail.gif", save_all=True, append_images=frames[1:], duration=durations, loop=0)
 
 
 def write_index(meta_json, summary):

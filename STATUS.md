@@ -42,7 +42,7 @@ Ultima actualizacion: 2026-10-08
 - [x] 653 imagenes convertidas (232 fondos/CG, 415 sprites con 43 paletas, 6 colores solidos) en 13 segundos
 - [x] 21 MB sin comprimir, 9.9 MB en disco (5,046 sectores, 1.5% del CD); sprite medio 19 KB
 - [x] Pico de sprites visibles a la vez: 215 KB (limite 320 KB), descontando lo tapado por imagenes opacas
-- [x] Camara, mascaras, pases de diapositivas, capas animadas de telefono y video `fang tail` (10 fotogramas, 305 KB)
+- [x] Camara, mascaras, pases de diapositivas, capas animadas de telefono y video `fang tail` por parches (38 parches a 12 cuadros por segundo, 405 KB en RAM)
 - [x] Logo del titulo, candado de extras e icono de memory card; docs/formato-img.md; 38 tests
 - [ ] Tu revision: build/reports/arte/fondos_1.html (y sprites_N.html) y build/reports/arte/fang_tail.gif
 

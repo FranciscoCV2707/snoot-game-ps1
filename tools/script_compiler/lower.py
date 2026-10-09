@@ -35,12 +35,13 @@ class Inst:
 class VState:
     """Estado de imagenes en un punto del flujo: por tag, las imagenes posibles (alternativas por camino)."""
 
-    def __init__(self, tags=None, z=None):
+    def __init__(self, tags=None, z=None, comp=None):
         self.tags = {k: set(v) for k, v in (tags or {}).items()}
         self.z = dict(z or {})
+        self.comp = {k: list(v) for k, v in (comp or {}).items()}   # tags acompanantes (parches de video) por tag
 
     def copy(self):
-        return VState(self.tags, self.z)
+        return VState(self.tags, self.z, self.comp)
 
     def merge(self, other):
         if other is None:
@@ -49,6 +50,9 @@ class VState:
             self.tags.setdefault(tag, set()).update(keys)
         for tag, z in other.z.items():
             self.z.setdefault(tag, z)
+        for tag, extra in other.comp.items():
+            self.comp.setdefault(tag, [])
+            self.comp[tag] += [c for c in extra if c not in self.comp[tag]]
         return self
 
 
@@ -508,9 +512,13 @@ class Lowerer:
                 extra_transforms.append(name)
             elif name not in ("vpunch", "hpunch", "center"):
                 self.warn(n, f"transform desconocido: {name}")
-        anim, final = atl_module.compile_anim(self, n, extra_transforms, slideshow=self.p.images.animation_of(key))
+        spec = self.p.images.animation_of(key)
+        patched = bool(spec and spec.get("patch"))
+        anim, final = atl_module.compile_anim(self, n, extra_transforms, slideshow=None if patched else spec)
         flags = FLAG_FLIP if flip else 0
         self.emit("SHOW", n.line, tag=self.reg.tag(n.tag), image=iid, pos=pos, z=z, flags=flags, anim=anim)
+        if patched:
+            self.show_patch(n, state, spec, pos, z)
         self.track_visibility(n.tag, iid, pos, anim, bool(flip))
         state.tags[n.tag] = {final or key}
         if final:
@@ -518,6 +526,22 @@ class Lowerer:
         if n.with_:
             self.transition(n.with_, n)
         return state
+
+    def show_patch(self, n, state, spec, pos, z):
+        """Video como parches: segundo sprite (tag~patch) encima de la imagen base, que cambia de parche con el tiempo."""
+        import types
+        ptag = n.tag + "~patch"
+        pkey = spec["frames"][0]
+        piid, _ = self.reg.image_id(pkey)
+        node = types.SimpleNamespace(tag=ptag, atl=None, at=[], line=n.line, file=n.file)
+        self.reg.last_key[ptag] = pkey
+        panim, _ = atl_module.compile_anim(self, node, [], slideshow=spec)
+        pz = Z_KEEP if z == Z_KEEP else min(120, z + 1)
+        self.emit("SHOW", n.line, tag=self.reg.tag(ptag), image=piid, pos=pos, z=pz, flags=0, anim=panim)
+        state.z[ptag] = pz if pz != Z_KEEP else state.z.get(n.tag, 0) + 1
+        state.comp.setdefault(n.tag, [])
+        if ptag not in state.comp[n.tag]:
+            state.comp[n.tag].append(ptag)
 
     def track_visibility(self, tag, iid, pos, anim, flip):
         """Registra la zona de la imagen que llega a verse en pantalla (para recortar el resto en la Fase 4)."""
@@ -622,6 +646,9 @@ class Lowerer:
 
     def n_Hide(self, n, state):
         self.emit("HIDE", n.line, tag=self.reg.tag(n.tag))
+        for companion in state.comp.pop(n.tag, []):
+            self.emit("HIDE", n.line, tag=self.reg.tag(companion))
+            state.z.pop(companion, None)
         state.tags.pop(n.tag, None)
         state.z.pop(n.tag, None)
         if n.with_:

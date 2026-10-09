@@ -37,7 +37,7 @@ El motor sube los indices a VRAM como palabras de 16 bits (2 pixeles por palabra
 `MCICON.BIN`: 16 colores PS1 (32 bytes) y el icono de 16x16 en 4 bits (128 bytes) para la cabecera del archivo de memory card (D10).
 
 ## Casos especiales resueltos
-- **Imagenes animadas**: pases de diapositivas (`fangphonegallery`, `projector9_blur`), capas animadas de los telefonos y el video `fang tail` (D3) se convierten en varias imagenes mas eventos de la tabla ANIM (`docs/bytecode.md`). El video usa 10 fotogramas elegidos por cambio de imagen (de 0.13 s a 1.9 s cada uno, 305 KB en disco).
+- **Imagenes animadas**: pases de diapositivas (`fangphonegallery`, `projector9_blur`), capas animadas de los telefonos y el video `fang tail` (D3) se convierten en varias imagenes mas eventos de la tabla ANIM (`docs/bytecode.md`). El video `fang tail` se convierte por **parches**: una imagen base (el primer cuadro, 30 KB) y 38 parches, que son el rectangulo de cada cuadro elegido que difiere de la base. El movimiento se muestrea a 12 cuadros por segundo y las pausas quedan como un solo cuadro largo. Base y parches comparten paleta y alineacion del tramado, asi que los bordes del parche no se notan. El motor dibuja la base y encima un sprite (`fang_tail_movie~patch`) que cambia de parche con eventos de la tabla ANIM en bucle: 405 KB sin comprimir en RAM, 256 KB en disco. Aparece tambien en la pestana *Animations* de la galeria (`meta.json` guarda los parches y sus tiempos).
 - **Copias volteadas** (`im.Flip`): no se duplican; el motor usa el bit de espejo.
 - **Interfaz**: logo del titulo (a 1/3 de escala) y candado de los extras generado por codigo.
 

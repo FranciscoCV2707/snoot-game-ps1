@@ -23,6 +23,7 @@
 - Si el área animada es pequeña (solo la cola), se animan solo esos recortes sobre un fondo fijo para ahorrar VRAM.
 **Motivo:** mantiene el efecto sin el costo de MDEC; el motor ya necesita cambiar texturas por tiempo.
 **Impacto:** el bytecode necesita una instrucción de animación simple (lista de fotogramas, tiempo por fotograma, bucle). Se incluye en la Fase 2 (`docs/bytecode.md`).
+**Revisión (Fase 4, a pedido del usuario):** los 10 fotogramas completos se veían raros. Ahora es una animación por parches (imagen base más 38 rectángulos que cambian, a 12 cuadros por segundo en movimiento), con una calidad mucho más cercana al video y 405 KB en RAM.
 
 ## 2026-10-08 - D4: Resolución 320x240 (elegida por el usuario)
 **Decisión:** modo de video 320x240 progresivo, imagen 16:9 en letterbox de 320x180 centrada en la pantalla 4:3 (barras negras de 30 líneas arriba y abajo). La caja de texto se superpone sobre la parte baja, incluida la barra.
