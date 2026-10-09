@@ -111,6 +111,39 @@ class Registry:
         return self.tag_ids[name]
 
 
+def get_ending_insts(reg, prefix, line=0, file=""):
+    """get_ending(anonscore, fangscore, wingStory) de src/storyline.rpy -> asigna ending_route_number (1-4)."""
+    insts = []
+
+    def emit(_name, **args):
+        insts.append(Inst(_name, args, line, file))
+
+    def cmp(name, op, value):
+        emit("PUSH_VAR", var=reg.var(name))
+        emit("PUSH_CONST", value=value)
+        emit("OP", op=OP_CODE[op])
+
+    route = reg.var("ending_route_number")
+    end = f"{prefix}.end"
+    steps = [(4, [("anonscore", ">=", 4), ("fangscore", ">=", 4)], True), (3, [("anonscore", ">=", 3), ("fangscore", "<=", 4)], False),
+             (2, [("anonscore", "<=", 3), ("fangscore", ">=", 3)], False)]
+    for num, conds, wing in steps:
+        nxt = f"{prefix}.n{num}"
+        for name, op, value in conds:
+            cmp(name, op, value)
+        emit("OP", op=OP_CODE["and"])
+        if wing:
+            emit("PUSH_VAR", var=reg.var("wingStory"))
+            emit("OP", op=OP_CODE["and"])
+        emit("JUMP_IF_FALSE", target=nxt)
+        emit("SET_VAR", var=route, value=num)
+        emit("JUMP", target=end)
+        emit("LABEL", name=nxt)
+    emit("SET_VAR", var=route, value=1)
+    emit("LABEL", name=end)
+    return insts
+
+
 class ChapterIR:
     def __init__(self, chapter):
         self.chapter = chapter
@@ -154,13 +187,13 @@ class Lowerer:
         self.counter += 1
         return f".{hint}{self.counter}"
 
-    def add_string(self, tid, text):
+    def add_string(self, tid, text, choice=False):
         if self.dry:
             return 0
         converted, dropped = textfmt.convert(text)
         for d in dropped:
             self.ir.dropped_tags[d] = self.ir.dropped_tags.get(d, 0) + 1
-        self.ir.strings.append({"id": tid, "text": converted})
+        self.ir.strings.append({"id": tid, "text": converted, "choice": choice})
         return len(self.ir.strings) - 1
 
     # -- punto de entrada ---------------------------------------------------
@@ -244,7 +277,7 @@ class Lowerer:
             es = self.p.tr.string(text)
             if es is None:
                 raise CompileError(f"{n.file}:{n.line}: opcion de menu sin traduccion: {text}")
-            entries.append((self.add_string(None, es), lbl))
+            entries.append((self.add_string(None, es, choice=True), lbl))
         self.emit("MENU", n.line, flags=0, choices=entries)
         outs = []
         for (text, cond, body), lbl in zip(n.choices, branch_labels):
@@ -559,6 +592,10 @@ class Lowerer:
             self.emit("VOLUME", node.line, channel=VOLUME_CHANNELS.get(channel, 0), volume=int(max(0, min(255, round(float(vol) * 255)))), time=tenths(delay))
         elif name == "renpy.mark_image_seen":
             key = self.p.images.resolve(args[0].split())
+            if key is None and args[0] in self.p.gallery_images:
+                # el original usa el nombre del elemento de galeria en vez del de la imagen (error): se corrige
+                key = self.p.images.resolve(self.p.gallery_images[args[0]].split())
+                self.warn(node, f"mark_image_seen('{args[0]}') corregido a la imagen de galeria '{self.p.gallery_images[args[0]]}'")
             if key is None:
                 self.warn(node, f"mark_image_seen de imagen inexistente (sin efecto en el original): {args[0]}")
                 return
@@ -580,8 +617,12 @@ class Lowerer:
             track = self.audio(args[0], node)
             if track is not None:
                 self.emit("MUSIC_QUEUE", node.line, track=track)
-        elif name in ("setup_ending", "ending_image", "toggle_debug"):
-            self.warn(node, f"{name}() lo cubre STORY.VNB")
+        elif name == "setup_ending":
+            self.counter += 1
+            if not self.dry:
+                self.ir.insts.extend(get_ending_insts(self.reg, f".ending{self.counter}", node.line, self.ch.name))
+        elif name in ("ending_image", "toggle_debug"):
+            self.warn(node, f"{name}() lo cubre el motor (progreso de finales)")
         elif name in ("webbrowser.open", "renpy.input"):
             self.warn(node, f"{name} ignorada (funcion de PC)")
         else:
@@ -650,7 +691,7 @@ class Lowerer:
                 raise CompileError(f"{n.file}:{n.line}: opcion de menu sin traduccion: {text}")
             lbl = self.new_label("pyopt")
             labels.append(lbl)
-            entries.append((self.add_string(None, es), lbl))
+            entries.append((self.add_string(None, es, choice=True), lbl))
         self.emit("MENU", n.line, flags=1 if shuffle else 0, choices=entries)
         end = self.new_label("pyend")
         outs = []

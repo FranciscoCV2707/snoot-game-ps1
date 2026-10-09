@@ -60,7 +60,7 @@ Formato: `opcode u8` seguido de los argumentos. Tamaños en bytes entre parénte
 | 0x14 | `SHOW_RANDOM` | tag u8, primera imagen u16, cantidad u8, flags u8 (6) | `showCG()` (elige 1 de las 9 imágenes de texto en una posición aleatoria) |
 | 0x15 | `MARK_SEEN` | imagen u16 (3) | `renpy.mark_image_seen(...)` |
 
-- `tag` identifica el "lugar" del sprite (anon, fang, naser, bg...). `SHOW` con un tag que ya existe lo reemplaza. Hasta 8 sprites simultáneos más el fondo.
+- `tag` identifica el "lugar" del sprite (anon, fang, naser, bg...). `SHOW` con un tag que ya existe lo reemplaza. Hasta 12 sprites simultáneos más el fondo (los fondos de color sólido, como `black`, `white` o `dimmer_*`, no cuentan: se dibujan como rectángulos).
 - `z` es el orden de dibujo (de `behind`): mayor se dibuja encima.
 - `flags` de `SHOW`: bit0 volteado (`xzoom -1`/`flip`), bit1 empezar invisible. Las 245 definiciones `im.Flip(...)` del juego no generan imágenes nuevas: el compilador usa la imagen original con el bit de volteo (cambia las coordenadas de textura).
 - `anim` indexa la tabla ANIM del capítulo (0 = ninguna).
@@ -97,7 +97,7 @@ Formato: `opcode u8` seguido de los argumentos. Tamaños en bytes entre parénte
 | 0x42 | `JUMP_IF_FALSE` | destino u32 (5) | `if`/`elif`/`while`; usa el tope de la pila |
 | 0x43 | `CALL` | destino u32 (5) | `call etiqueta` |
 | 0x44 | `RETURN` | (1) | `return` |
-| 0x45 | `LOAD_CHAPTER` | capítulo u16, entrada u32 (7) | `call expression current_chapter` (resuelto por el compilador) |
+| 0x45 | `LOAD_CHAPTER` | capítulo u16, entrada u32, modo u8 (8) | `call expression current_chapter` y saltos o llamadas a etiquetas de otro capítulo; modo 0 = llamada (apila el retorno), 1 = salto |
 | 0x46 | `END` | (1) | fin del capítulo; el motor decide el siguiente paso |
 
 - `MENU` flags: bit0 orden aleatorio de las opciones (el juego usa `randomize_choices` con 2 opciones).
@@ -111,7 +111,8 @@ Formato: `opcode u8` seguido de los argumentos. Tamaños en bytes entre parénte
 | 0x51 | `ADD_VAR` | var u8, valor i16 (4) | `$ x += 1` |
 | 0x52 | `PUSH_VAR` | var u8 (2) | variable en expresión |
 | 0x53 | `PUSH_CONST` | valor i16 (3) | constante en expresión |
-| 0x54 | `OP` | operador u8 (2) | `== != < <= > >= and or not + -` |
+| 0x54 | `OP` | operador u8 (2) | `== != < <= > >= and or not + - *` (0 a 11, orden de `OPERATORS` en `opcodes.py`) |
+| 0x55 | `STORE_VAR` | var u8 (2) | `$ x = expresión` (saca el tope de la pila y lo guarda) |
 
 - Variables: 64 de 16 bits con signo. Las banderas booleanas son variables 0/1. La auditoría encontró unas 12 (`anonscore`, `fangscore`, `wingStory`, `late_to_spears`, `punched_into_flowerbed`, `TalkedWithTrish`, `LeftStage`, `ending_route_number` y contadores de bucles).
 - Pila de expresiones: 16 entradas. Pila de `CALL`: 8 niveles (el juego usa 3 llamadas).
@@ -184,7 +185,7 @@ Si un recurso no está residente al usarse (error del compilador), el motor lo c
 |---|---|
 | Variables | 64 (i16) |
 | Pila de expresiones / `CALL` | 16 / 8 |
-| Sprites simultáneos | 8 + fondo |
+| Sprites simultáneos | 12 + fondo (la escena de multitud del extra x6 usa 11) |
 | Fotogramas clave por animación | 8 |
 | Opciones por menú | 6 |
 | Código por capítulo | 128 KB |

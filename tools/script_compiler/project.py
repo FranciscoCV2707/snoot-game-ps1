@@ -61,6 +61,8 @@ class Project:
         extra_text = (GAME / "src" / "extra_chapters_menu.rpy").read_text(encoding="utf-8-sig")
         self.extra_chapters = re.findall(r'_\("([^"]+)"\),\s*"(chapter_\w+)"', extra_text)
         self.defaults = self._load_defaults()
+        gallery = json.loads((GAME / "src" / "gallery_dataset.json").read_text(encoding="utf-8-sig"))
+        self.gallery_images = {item["name"]: item["image"] for tab in gallery["tabs"] for item in tab.get("items", [])}
 
     def _load_misc(self):
         nodes = parse_file(GAME / "src" / "misc_definitions.rpy", "src/misc_definitions.rpy")

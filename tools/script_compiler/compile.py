@@ -85,18 +85,7 @@ def story_insts(project, registry):
         emit("SET_VAR", var=var("ending_route_number"), value=num)
         emit("JUMP", target="story.dispatch")
 
-    # get_ending(anon, fang, wing)
-    cmp("anonscore", ">=", 4); cmp("fangscore", ">=", 4); emit("OP", op=OP_CODE["and"])
-    emit("PUSH_VAR", var=var("wingStory")); emit("OP", op=OP_CODE["and"])
-    emit("JUMP_IF_FALSE", target="story.r3"); route(4, None)
-    label("story.r3")
-    cmp("anonscore", ">=", 3); cmp("fangscore", "<=", 4); emit("OP", op=OP_CODE["and"])
-    emit("JUMP_IF_FALSE", target="story.r2"); route(3, None)
-    label("story.r2")
-    cmp("anonscore", "<=", 3); cmp("fangscore", ">=", 3); emit("OP", op=OP_CODE["and"])
-    emit("JUMP_IF_FALSE", target="story.r1"); route(2, None)
-    label("story.r1")
-    emit("SET_VAR", var=var("ending_route_number"), value=1)
+    # El capitulo 11 ya llamo a setup_ending() (get_ending) y dejo la ruta en ending_route_number.
     label("story.dispatch")
     for num in sorted(project.ending_routes):
         cmp("ending_route_number", "==", num)
@@ -104,11 +93,70 @@ def story_insts(project, registry):
         for chapter in project.ending_routes[num]:
             call(chapter)
         if num != 1:
-            emit("SPECIAL", id=2)
-        emit("END")
+            emit("JUMP", target="story.credits")
+        else:
+            emit("END")   # el final Shooter cierra el juego (renpy.quit)
         label(f"story.skip{num}")
     emit("HALT")
+
+    # label lending de src/credits.rpy: musica, creditos (los dibuja el motor) y la imagen final de las rutas 3 y 4
+    def image(name):
+        return registry.image_id(project.images.resolve(name.split()))[0]
+
+    def track(path):
+        return registry.audio_id(path)
+
+    label("story.credits")
+    cmp("ending_route_number", "==", 4)
+    emit("JUMP_IF_FALSE", target="story.credits.other")
+    emit("MUSIC_QUEUE", track=track("audio/OST/amberlight brillance live end.ogg"))
+    emit("JUMP", target="story.credits.roll")
+    label("story.credits.other")
+    emit("MUSIC_PLAY", track=track("audio/OST/Dino Destiny Reader.ogg"), fade=0, flags=0)
+    label("story.credits.roll")
+    emit("SPECIAL", id=2)
+    emit("MUSIC_STOP", fade=50)
+    emit("SCENE", image=image("black"))
+    emit("TRANSITION", type=1, a=180, b=0, c=0)
+    emit("PAUSE", frames=120, flags=1)
+    for num, name in ((3, "c10"), (4, "golden ending")):
+        cmp("ending_route_number", "==", num)
+        emit("JUMP_IF_FALSE", target=f"story.credits.n{num}")
+        emit("SCENE", image=image(name))
+        emit("TRANSITION", type=1, a=90, b=0, c=0)
+        emit("PAUSE", frames=1200, flags=1)
+        emit("SCENE", image=image("black"))
+        emit("TRANSITION", type=1, a=120, b=0, c=0)
+        emit("PAUSE", frames=60, flags=1)
+        label(f"story.credits.n{num}")
+    emit("END")
     return insts
+
+
+FONT_PATH = GAME / "gui" / "fonts" / "NotoSansJP-Regular.ttf"
+TEXT_WIDTH = 304       # pixeles utiles de la caja (D6)
+TEXT_LINES = 3
+CHOICE_WIDTH = 296
+CHOICE_LINES = 2
+
+
+def paginate_strings(result):
+    """Parte cada cadena en lineas y paginas segun D6. Devuelve estadisticas."""
+    from tools.script_compiler import textfmt
+    measure = textfmt.make_measure(FONT_PATH, 13)
+    stats = {"strings": 0, "multipage": 0, "pages": 0, "choice_overflow": 0}
+    for ir in result.irs.values():
+        for s in ir.strings:
+            lines = CHOICE_LINES if s.get("choice") else TEXT_LINES
+            width = CHOICE_WIDTH if s.get("choice") else TEXT_WIDTH
+            s["text"], pages = textfmt.paginate(s["text"], measure, width, lines)
+            stats["strings"] += 1
+            stats["pages"] += pages
+            if pages > 1:
+                stats["multipage"] += 1
+                if s.get("choice"):
+                    stats["choice_overflow"] += 1
+    return stats
 
 
 def compile_all(out=OUT):
@@ -118,6 +166,7 @@ def compile_all(out=OUT):
     result = lower_all(project, registry)
     if result.errors:
         return project, registry, result
+    result.text_stats = paginate_strings(result)
     gallery = register_gallery(project, registry)
     story = story_insts(project, registry)
 

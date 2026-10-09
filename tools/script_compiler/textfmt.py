@@ -52,13 +52,66 @@ def convert(text):
             else:
                 n = to_number(arg.lstrip("+") if arg else 0, 0)
                 out.append(code(SIZE, int(max(-2, min(2, round(n / 5))) + 128)))
-        elif name in DROPPED:
-            dropped.append(name)
-        else:
+        elif not closing:
             dropped.append(name)
     out.append(text[pos:])
     result = "".join(out).replace("\x00LB", "{").replace("\x00LS", "[").replace("\n", chr(NEWLINE))
     return result, dropped
+
+
+def make_measure(font_path, size, scale=4):
+    """Devuelve una funcion que mide el ancho en pixeles (de la pantalla de 320) de un texto visible."""
+    from PIL import ImageFont
+    font = ImageFont.truetype(str(font_path), size * scale)
+
+    def measure(text):
+        return font.getlength(text) / scale
+    return measure
+
+
+def paginate(text, measure, width, max_lines):
+    """Parte el texto en lineas (\\n) y paginas (\\x0B) segun el ancho de la caja y el maximo de lineas.
+
+    Devuelve (texto, numero de paginas). Los codigos de control no ocupan ancho.
+    """
+    tokens = []
+    cur = ""
+    for ch in text:
+        if ch == " ":
+            tokens.append(cur)
+            cur = ""
+        elif ord(ch) == NEWLINE:
+            tokens.append(cur)
+            tokens.append("\n")
+            cur = ""
+        else:
+            cur += ch
+    tokens.append(cur)
+
+    out, line, lines_used, pages = [], "", 1, 1
+
+    def break_line():
+        nonlocal line, lines_used, pages
+        if lines_used >= max_lines:
+            out.append(line + chr(PAGE))
+            lines_used = 1
+            pages += 1
+        else:
+            out.append(line + chr(NEWLINE))
+            lines_used += 1
+        line = ""
+
+    for tok in tokens:
+        if tok == "\n":
+            break_line()
+            continue
+        trial = (line + " " + tok) if line else tok
+        if line and measure(strip_codes(trial)) > width:
+            break_line()
+            trial = tok
+        line = trial
+    out.append(line)
+    return "".join(out), pages
 
 
 def strip_codes(text):
