@@ -139,6 +139,8 @@ def main():
     (OUT / "audio_usage.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
 
     lines = ["# Presupuesto de audio y disco", "", "Generado por `tools/audio/audit_audio.py`.", "",
+             "> Nota (D12): las cifras de musica son de UNA copia por pista. Con las copias seguidas para los bucles "
+             "(objetivo 90 s, maximo 3 copias) la musica en mono sube a ~68,800 sectores (20.7% del CD); ver `docs/decisiones.md`.", "",
              "## Musica", "",
              f"- Pistas en `audio/OST`: {len(all_music)}; usadas por la historia: {len(music)}; sin usar: {len(unused_music)}.",
              f"- Minutos de musica usada: {music_min:.1f}.",

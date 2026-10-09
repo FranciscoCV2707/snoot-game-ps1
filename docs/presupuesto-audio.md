@@ -2,6 +2,8 @@
 
 Generado por `tools/audio/audit_audio.py`.
 
+> Nota (D12): las cifras de musica son de UNA copia por pista. Con las copias seguidas para los bucles (objetivo 90 s, maximo 3 copias) la musica en mono sube a ~68,800 sectores (20.7% del CD); ver `docs/decisiones.md`.
+
 ## Musica
 
 - Pistas en `audio/OST`: 71; usadas por la historia: 63; sin usar: 8.
