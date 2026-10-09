@@ -35,7 +35,9 @@
 ## 2026-10-08 - D5: Fondos y personajes en 8 bits con dither ordenado
 **Decisión:** fondos, CGs y personajes en 8 bits con paleta (256 colores) y dither ordenado, 56 KB por fondo. Personajes con paleta propia y transparencia por umbral.
 **Motivo:** elección del usuario por apariencia; también es lo más pequeño y rápido de cargar.
-**Mitigación del costo (posterización en degradados, p.ej. acuario y noche):** paleta optimizada por imagen (no una global), cuantización en espacio perceptual y ajuste de intensidad del dither por imagen; se verifica en la hoja de contacto de la Fase 4. Las imágenes donde falle se pueden pasar a 15 bits de forma individual (el formato lo permite por imagen).
+**Mitigación del costo (posterización en degradados, p.ej. acuario y noche):** paleta propia por imagen (no una global) con el cuantizador **octree** y dither ordenado con la matriz de la PS1 a intensidad 2. En pruebas (acuario, cuarto oscuro, azotea nocturna) baja el error de color medio de 6.9 a 5.1, 5.4 a 4.4 y 6.2 a 4.6 respecto a median cut, y conserva luces y tonos (el morado del acuario). Se verifica en la hoja de contacto de la Fase 4. Las imágenes donde aun falle se pueden pasar a 15 bits de forma individual (el formato lo permite por imagen).
+
+**Proporción:** las imágenes originales son 16:9 y se muestran en un letterbox de 320x180 dentro de la pantalla 4:3, por lo que no se deforman ni se ven aplastadas. Los personajes se escalan por el mismo factor.
 
 ## 2026-10-08 - D6: Fuente y caja de texto
 **Decisión:** fuente de ancho variable, unos 13 px de alto (sobre 240 líneas), caja de 3 líneas. El compilador divide en páginas los textos que no caben.
