@@ -43,6 +43,7 @@ class VM:
     def __init__(self, program, cov):
         self.p = program
         self.cov = cov
+        self.trace = None
 
     def initial(self, chapter, pc=0):
         return {"ch": chapter, "pc": pc, "vars": [0] * NUM_VARS, "calls": [], "sprites": {}, "bg": 0, "stack": [], "z": {}}
@@ -71,6 +72,8 @@ class VM:
                 if a["text"] >= ch.text_count:
                     raise SimError(f"{ch.name}@{pc}: texto fuera de rango {a['text']}")
                 cov.text_ids.add(ch.text_base + a["text"])
+                if self.trace is not None:
+                    self.trace.append(f"SAY {ch.text_base + a['text']}")
             elif name == "SCENE":
                 self.check_image(a["image"], ch, pc)
                 st["bg"] = a["image"]
