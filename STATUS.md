@@ -2,7 +2,7 @@
 
 Ultima actualizacion: 2026-10-08
 
-## Fase actual: 4 hecha (pendiente de tu revision del arte); siguiente: 5 - Pipeline de audio
+## Fase actual: 5 hecha (pendiente de tu escucha); siguiente: 6 - Motor PS1
 
 ## Hecho
 ### Fase 0 - Entorno (terminada)
@@ -46,12 +46,18 @@ Ultima actualizacion: 2026-10-08
 - [x] Logo del titulo, candado de extras e icono de memory card; docs/formato-img.md; 38 tests
 - [ ] Tu revision: build/reports/arte/fondos_1.html (y sprites_N.html) y build/reports/arte/fang_tail.gif
 
+### Fase 5 - Pipeline de audio (hecha, pendiente de que escuches el resultado)
+- [x] MUSIC.XA: 63 pistas + 6 mezclas de stems, 16 carriles, 81,088 sectores (24.4% del CD), finales de familia en carril lateral
+- [x] 105 efectos y ambientes en SPU-ADPCM (5.8 MB), ambientes en bucle de 6 s con empalme suave
+- [x] Compilador: los cruces de musica (music1/music2) son reemplazos y las capas (stems) son mezclas con cambio de carril sincronizado
+- [x] audio_index.bin, docs/formato-audio.md, 44 tests
+- [ ] Tu escucha: experiments/xa_test (disco con el MUSIC.XA real)
+
 ## Siguiente
 - [ ] Tu revision de docs/decisiones.md, docs/bytecode.md y docs/presupuesto-memoria.md
-- [ ] Fase 5 - Pipeline de audio
+- [ ] Fase 6 - Motor PS1: base
 
 ## Pendiente (fases siguientes)
-- [ ] Fase 5 - Pipeline de audio
 - [ ] Fase 6 - Motor PS1: base
 - [ ] Fase 7 - Motor PS1: interprete y escenas
 - [ ] Fase 8 - Motor PS1: audio, transiciones, guardado y menus

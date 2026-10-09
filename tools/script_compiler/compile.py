@@ -33,6 +33,7 @@ def lower_all(project, registry):
             if group == "base":
                 snapshot = dict(registry.last_key)
             registry.last_key = dict(snapshot) if (name.startswith("route") and snapshot is not None) else {}
+            registry.music, registry.music_cur = {}, None
             group = name
         try:
             ir = Lowerer(project, registry, chapter).run()

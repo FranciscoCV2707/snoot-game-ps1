@@ -75,7 +75,7 @@ Formato: `opcode u8` seguido de los argumentos. Tamaños en bytes entre parénte
 ### Audio
 | Op | Nombre | Argumentos | Ren'Py |
 |---|---|---|---|
-| 0x20 | `MUSIC_PLAY` | pista u16, fundido u8 (1/10 s), flags u8 (4) | `play music ... fadein N` (también `music1`/`music2` con bit0 crossfade) |
+| 0x20 | `MUSIC_PLAY` | pista u16, fundido u8 (1/10 s), flags u8 (4) | `play music ... fadein N`; flags: bit0 reemplaza a otra canción (cruce de `music1`/`music2`), bit1 conserva la posición (cambio de mezcla de stems en carril sincronizado) |
 | 0x21 | `MUSIC_STOP` | fundido u8 (2) | `stop music fadeout N` |
 | 0x22 | `AMBIENT_PLAY` | ranura u8 (0-3), sonido u16, fundido u8 (5) | `play ambient/ambient1-3 ... fadein N` |
 | 0x23 | `AMBIENT_STOP` | ranura u8, fundido u8 (3) | `stop ambient... fadeout N` |

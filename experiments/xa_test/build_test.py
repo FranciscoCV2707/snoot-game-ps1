@@ -70,11 +70,28 @@ def build_exe():
     shutil.copy(build / "xa_test.exe", WORK / "xa_test.exe")
 
 
+def use_real_music():
+    """Usa MUSIC.XA del pipeline real (build/data) y escribe que pista empieza en cada carril."""
+    import json
+    shutil.copy(ROOT / "build" / "data" / "MUSIC.XA", WORK / "music.xa")
+    out = json.loads((ROOT / "build" / "data" / "audio_out.json").read_text(encoding="utf-8"))
+    firsts = {}
+    for path, e in out["music"]["index"].items():
+        if e["start"] // 16 == 0 or (e["lane"] not in firsts or e["start"] < firsts[e["lane"]][0]):
+            firsts[e["lane"]] = (e["start"], path)
+    lines = [f"Canal {lane:2d}: {Path(path).stem}" for lane, (start, path) in sorted(firsts.items())]
+    (WORK / "CANALES.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print("\n".join(lines))
+
+
 def main():
     WORK.mkdir(parents=True, exist_ok=True)
     (WORK / "system.cnf").write_text("BOOT=cdrom:\\XATEST.EXE;1\nTCB=4\nEVENT=10\nSTACK=801FFFF0\n", encoding="utf-8")
     (WORK / "iso.xml").write_text(XML, encoding="utf-8")
-    make_music()
+    if "--real" in sys.argv:
+        use_real_music()
+    else:
+        make_music()
     make_data()
     build_exe()
     run([SDK_BIN / "mkpsxiso.exe", "-y", "-o", "xa_test.bin", "-c", "xa_test.cue", "iso.xml"], cwd=WORK)

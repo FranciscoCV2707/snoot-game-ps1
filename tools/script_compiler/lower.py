@@ -81,6 +81,8 @@ class Registry:
         self.last_key = {}
         self.pos_state = {}
         self.camera = {"zoom": 1.0, "x": 0.0, "y": 0.0, "blur": 0.0}
+        self.music = {}        # canal de Ren'Py -> ruta de la pista que suena en el
+        self.music_cur = None
         self.visible = {}      # id de imagen -> [x0, y0, x1, y1] visible en pixeles originales, o None si hace falta completa
 
     def mark_full(self, iid):
@@ -113,6 +115,14 @@ class Registry:
             self._audio_ids[real] = len(self.audio)
             self.audio.append({"path": real})
         return self._audio_ids[real]
+
+    def audio_mix(self, paths):
+        """Entrada de audio para una mezcla de stems (se mezcla en la Fase 5)."""
+        key = "mix:" + "+".join(paths)
+        if key not in self._audio_ids:
+            self._audio_ids[key] = len(self.audio)
+            self.audio.append({"path": key, "mix": list(paths)})
+        return self._audio_ids[key]
 
     def audio_group(self, paths):
         """IDs consecutivos para elegir uno al azar entre varios sonidos (se duplican entradas si hace falta)."""
@@ -664,16 +674,11 @@ class Lowerer:
     def n_Play(self, n, state):
         ch = n.channel
         fade = tenths(n.fadein)
-        for i, src in enumerate(n.sources):
+        if ch in MUSIC_CHANNELS:
+            return self.play_music(n, state, fade)
+        for src in n.sources:
             track = self.audio(src, n)
-            if ch in MUSIC_CHANNELS:
-                if track is None:
-                    self.emit("MUSIC_STOP", n.line, fade=0)
-                elif i == 0 and n.verb == "play":
-                    self.emit("MUSIC_PLAY", n.line, track=track, fade=fade, flags=1 if ch != "music" else 0)
-                else:
-                    self.emit("MUSIC_QUEUE", n.line, track=track)
-            elif ch in AMBIENT_SLOTS:
+            if ch in AMBIENT_SLOTS:
                 if track is not None:
                     self.emit("AMBIENT_PLAY", n.line, slot=AMBIENT_SLOTS[ch], sound=track, fade=fade)
             elif ch in SFX_CHANNELS:
@@ -683,10 +688,67 @@ class Lowerer:
                 self.warn(n, f"canal de audio desconocido: {ch}")
         return state
 
+    @staticmethod
+    def clean_audio_name(src):
+        """Quita prefijos de Ren'Py como <sync music> y devuelve (ruta, sincronizado)."""
+        sync = src.startswith("<sync")
+        return (src.split(">", 1)[1] if src.startswith("<") and not src.startswith("<silence") else src), sync
+
+    def music_flags(self, sync):
+        active = self.reg.music
+        return (1 if len(active) > 1 else 0) | (2 if sync else 0)
+
+    def play_music(self, n, state, fade):
+        """Musica en varios canales de Ren'Py -> un solo flujo XA: los cruces son reemplazos y las capas (stems) son mezclas."""
+        reg = self.reg
+        ch = n.channel
+        names = [self.clean_audio_name(s) for s in n.sources]
+        if n.verb == "queue":
+            for name, _ in names:
+                track = self.audio(name, n)
+                self.emit("MUSIC_STOP", n.line, fade=0) if track is None else self.emit("MUSIC_QUEUE", n.line, track=track)
+            return state
+        first, sync = names[0]
+        if first.startswith("<silence"):
+            reg.music.pop(ch, None)
+            self.emit("MUSIC_STOP", n.line, fade=0)
+            return state
+        path = self.p.audio_path(first)
+        if path is None:
+            raise CompileError(f"{n.file}:{n.line}: audio no encontrado: {first}")
+        reg.music[ch] = path
+        reg.music_cur = ch
+        if "stem" in path.lower():
+            self.emit_stem_mix(n, fade, sync)
+        else:
+            self.emit("MUSIC_PLAY", n.line, track=reg.audio_id(first), fade=fade, flags=self.music_flags(False))
+            for extra, _ in names[1:]:
+                if extra != first and not extra.startswith("<silence"):
+                    self.emit("MUSIC_QUEUE", n.line, track=reg.audio_id(extra))
+        return state
+
+    def emit_stem_mix(self, n, fade, sync):
+        """Capas de una misma cancion (stems) que suenan a la vez: se mezclan en la PC; el motor cambia de carril sincronizado."""
+        stems = sorted({p for p in self.reg.music.values() if "stem" in p.lower()})
+        flags = 2 if (sync or len(stems) > 1) else 0
+        self.emit("MUSIC_PLAY", n.line, track=self.reg.audio_mix(stems), fade=fade, flags=flags)
+
     def n_Stop(self, n, state):
         fade = tenths(n.fadeout)
         if n.channel in MUSIC_CHANNELS:
-            self.emit("MUSIC_STOP", n.line, fade=fade)
+            reg = self.reg
+            path = reg.music.pop(n.channel, None)
+            if path is None:
+                return state
+            if "stem" in path.lower():
+                stems = sorted({p for p in reg.music.values() if "stem" in p.lower()})
+                if stems:
+                    self.emit("MUSIC_PLAY", n.line, track=reg.audio_mix(stems), fade=fade, flags=2)
+                else:
+                    self.emit("MUSIC_STOP", n.line, fade=fade)
+            elif reg.music_cur == n.channel or not reg.music:
+                self.emit("MUSIC_STOP", n.line, fade=fade)
+            # si otro canal sigue sonando, es la salida de un cruce de canciones: el flujo unico ya cambio
         elif n.channel in AMBIENT_SLOTS:
             self.emit("AMBIENT_STOP", n.line, slot=AMBIENT_SLOTS[n.channel], fade=fade)
         elif n.channel in SFX_CHANNELS:
