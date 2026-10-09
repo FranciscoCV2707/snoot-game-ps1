@@ -137,6 +137,16 @@ const Image *res_get(int image_id)
 	return img;
 }
 
+const Image *res_peek(int image_id)
+{
+	int i;
+
+	for (i = 0; i < MAX_ENTRIES; i++)
+		if (entries[i].used && entries[i].id == image_id)
+			return &entries[i].img;
+	return 0;
+}
+
 static const Image *load_image(int image_id)
 {
 	char path[24];

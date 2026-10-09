@@ -6,3 +6,5 @@
 void res_new_scene(void);
 /* Devuelve la imagen cargada (0 si no existe o no cabe en VRAM). */
 const Image *res_get(int image_id);
+/* Igual que res_get pero sin leer del CD: 0 si la imagen no esta ya cargada. */
+const Image *res_peek(int image_id);

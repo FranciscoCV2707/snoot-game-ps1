@@ -86,6 +86,11 @@ def build_game_bin(meta, start_chapter, start_offset):
     out += struct.pack("<H", len(meta["positions"]))
     for pos in meta["positions"]:
         out += struct.pack("<hh", round(pos["xalign"] * 256), round(pos["yalign"] * 256))
+    # imagenes de la galeria: id de imagen -> indice en la galeria
+    gallery = [(iid, img["gallery"]) for iid, img in enumerate(meta["images"]) if img and img.get("gallery") is not None]
+    out += struct.pack("<HH", len(meta["gallery"]), len(gallery))
+    for iid, index in gallery:
+        out += struct.pack("<HB", iid, index)
     return out
 
 

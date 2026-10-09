@@ -25,6 +25,8 @@
 #define SEEN_BYTES 2048
 #define MENU_TOP 14
 #define MENU_BOTTOM 226
+#define MAX_GALLERY 256
+#define SKIP_PER_FRAME 8                 /* lineas ya leidas que pasan por cuadro al saltar */
 
 typedef struct {
 	char name[24];
@@ -51,6 +53,13 @@ static int pause_left, say_seen_before;
 static int bg_start;                        /* cuadro en que aparecio el fondo (inicio de su Pan) */
 static uint8_t seen[SEEN_BYTES];
 static uint32_t endings_mask, bonus_mask;
+static uint16_t gallery_image[MAX_GALLERY];      /* imagen -> indice de galeria, en pares */
+static uint8_t gallery_index[MAX_GALLERY];
+static int gallery_pairs, gallery_count;
+static uint8_t gallery_seen[(MAX_GALLERY + 7) / 8];
+
+/* Modo saltar (R1): pasa lo ya leido sin cargar nada del CD; se detiene en texto nuevo, finales y cambios de capitulo */
+static int skip_mode, eat_cross;
 
 static int menu_cursor, menu_top, menu_order[VM_MENU_MAX];
 static uint32_t rng_state = 12345;
@@ -140,6 +149,25 @@ static void load_game_tables(void)
 		pos_y[i] = (int16_t)rd16(p + 2);
 		p += 4;
 	}
+	gallery_count = rd16(p);
+	gallery_pairs = rd16(p + 2);
+	p += 4;
+	if (gallery_count > MAX_GALLERY || gallery_pairs > MAX_GALLERY)
+		fatal("galeria demasiado grande");
+	for (i = 0; i < gallery_pairs; i++) {
+		gallery_image[i] = rd16(p);
+		gallery_index[i] = p[2];
+		p += 3;
+	}
+}
+
+static void gallery_mark(int image)
+{
+	int i;
+
+	for (i = 0; i < gallery_pairs; i++)
+		if (gallery_image[i] == image)
+			gallery_seen[gallery_index[i] >> 3] |= (uint8_t)(1 << (gallery_index[i] & 7));
 }
 
 static int chapter_loader(void *user, int chapter, VmChapter *out)
@@ -182,15 +210,29 @@ static void notify(void *user, int opcode, const int32_t *args, int nargs)
 	switch (opcode) {
 	case OP_SCENE:
 		bg_start = video_frames();
+		gallery_mark(args[0]);
 		scene_dirty = 1;
 		break;
 	case OP_SHOW:
-	case OP_HIDE:
-	case OP_BACKGROUND:
+		gallery_mark(args[1]);
 		scene_dirty = 1;
+		break;
+	case OP_BACKGROUND:
+		gallery_mark(args[0]);
+		scene_dirty = 1;
+		break;
+	case OP_HIDE:
+		scene_dirty = 1;
+		break;
+	case OP_MARK_SEEN:
+		gallery_mark(args[0]);
 		break;
 	case OP_ENDING:
 		endings_mask |= 1u << (args[0] & 31);
+		skip_mode = 0;
+		break;
+	case OP_LOAD_CHAPTER:
+		skip_mode = 0;
 		break;
 	case OP_UNLOCK_BONUS:
 		bonus_mask |= 1u << (args[0] & 31);
@@ -262,8 +304,8 @@ static void scene_sync(void)
 {
 	int i;
 
-	if (!scene_dirty)
-		return;
+	if (!scene_dirty || skip_mode)
+		return;                  /* al saltar no se lee el CD: la escena se carga una vez al detenerse */
 	scene_dirty = 0;
 	res_new_scene();
 	if (vm.bg)
@@ -271,6 +313,12 @@ static void scene_sync(void)
 	for (i = 0; i < VM_MAX_SPRITES; i++)
 		if (vm.sprites[i].used && vm.sprites[i].image)
 			res_get(vm.sprites[i].image);
+}
+
+/* Imagen para dibujar: al saltar solo lo que ya esta en VRAM */
+static const Image *scene_image(int id)
+{
+	return skip_mode ? res_peek(id) : res_get(id);
 }
 
 static int sprite_before(const VmSprite *a, const VmSprite *b)
@@ -284,7 +332,7 @@ static void draw_scene(void)
 	int n = 0, i, j, rank;
 
 	if (vm.bg) {
-		const Image *bg = res_get(vm.bg);
+		const Image *bg = scene_image(vm.bg);
 
 		if (bg && bg->kind == 2) {
 			video_rect(LAYER_BG, 0, VIEW_Y, SCREEN_W, VIEW_H, bg->solid[0], bg->solid[1], bg->solid[2], 0);
@@ -309,7 +357,7 @@ static void draw_scene(void)
 		}
 	for (rank = n - 1; rank >= 0; rank--) {
 		const VmSprite *s = order[rank];
-		const Image *img = res_get(s->image);
+		const Image *img = scene_image(s->image);
 		int xa, ya, layer = LAYER_BG - 1 - rank;
 
 		if (!img || img->kind == 3)
@@ -450,9 +498,33 @@ static void restart(void)
 	state = ST_RUN;
 }
 
-static void update_say(int skipping)
+/* Pasa varias lineas ya leidas y pausas por cuadro; se detiene en la primera linea no leida. */
+static void skip_step(void)
 {
-	int advance = input_pressed(PAD_CROSS) || (skipping && say_seen_before) ||
+	int n;
+
+	for (n = 0; skip_mode && n < SKIP_PER_FRAME; n++) {
+		if (state == ST_SAY) {
+			if (!say_seen_before) {
+				skip_mode = 0;
+				break;
+			}
+			seen_set(vm.ev_gid);
+			state = ST_RUN;
+		} else if (state == ST_PAUSE) {
+			state = ST_RUN;
+		} else if (state != ST_RUN) {
+			break;                   /* decision, final o error: espera al jugador */
+		}
+		run_vm();
+	}
+	if (skip_mode && state == ST_SAY)
+		text_reveal_page(&run);      /* la linea que queda a la vista sale completa, sin maquina de escribir */
+}
+
+static void update_say(void)
+{
+	int advance = (input_pressed(PAD_CROSS) && !eat_cross) ||
 	              (text_page_done(&run) && run.auto_next && text_finished(&run));
 
 	if (advance) {
@@ -517,26 +589,35 @@ int main(int argc, const char *argv[])
 	vb_start = VSync(-1);
 
 	for (;;) {
-		int vb, skipping;
+		int vb;
 
 		input_update();
-		skipping = input_down(PAD_R1);
 		if (input_pressed(PAD_SELECT))
 			debug = !debug;
 		if (input_pressed(PAD_SQUARE))
 			show_box = !show_box;
+		/* R1 activa o detiene el salto; X tambien lo detiene (fuera de una decision) sin avanzar la linea */
+		eat_cross = 0;
+		if (input_pressed(PAD_R1)) {
+			skip_mode = !skip_mode;
+		} else if (skip_mode && state != ST_MENU && input_pressed(PAD_CROSS)) {
+			skip_mode = 0;
+			eat_cross = 1;
+		}
 
 		if (state == ST_RUN)
 			run_vm();
+		skip_step();
+		scene_sync();
 		switch (state) {
 		case ST_SAY:
-			update_say(skipping);
+			update_say();
 			break;
 		case ST_MENU:
 			update_menu();
 			break;
 		case ST_PAUSE:
-			if (--pause_left <= 0 || (vm.ev_flags & 1 && (input_pressed(PAD_CROSS) || skipping)))
+			if (--pause_left <= 0 || (vm.ev_flags & 1 && input_pressed(PAD_CROSS) && !eat_cross))
 				state = ST_RUN;
 			break;
 		case ST_END:
@@ -567,6 +648,8 @@ int main(int argc, const char *argv[])
 		}
 		if (debug)
 			draw_debug(fps);
+		if (skip_mode)
+			font_draw(LAYER_DEBUG, SCREEN_W - 84, 12, ">> Saltando", 255, 220, 40);
 		video_flip();
 	}
 	return 0;

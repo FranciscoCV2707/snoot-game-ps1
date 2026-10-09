@@ -1,8 +1,8 @@
 # STATUS
 
-Ultima actualizacion: 2026-10-08
+Ultima actualizacion: 2026-10-09
 
-## Fase actual: 6 demo hecha (pendiente de probar); siguiente: 7 - interprete del bytecode
+## Fase actual: 7 casi terminada (falta tu prueba del modo saltar y del disco completo); siguiente: 8
 
 ## Hecho
 ### Fase 0 - Entorno (terminada)
@@ -57,11 +57,22 @@ Ultima actualizacion: 2026-10-08
 - [x] engine/: video con doble buffer y capas, lectura de CD, LZ4, carga de imagenes IMG1, fuente de 4 bits con acentos, maquina de escribir, control
 - [x] tools/engine: FONT.BIN (248 glifos, normal y cursiva) y disco de la demo
 - [x] Compila sin avisos; SNOOT.EXE de 36 KB
-- [ ] Tu prueba: build/engine/snoot_demo.cue en DuckStation y PCSX-Redux (fondo, personaje, 3 lineas, X avanza)
+- [x] Probada en DuckStation (base del juego de la Fase 7)
+
+### Fase 7 - Motor PS1: interprete y escenas
+- [x] VM portable (engine/src/vm.c) comparada con el simulador en PC (tests/test_vm_host.py)
+- [x] Bucle de juego: escenas, dialogo, menus, cambio de capitulo; disco con `python -m tools.engine.build_game --chapters 0,...`
+- [x] Capitulo 1 jugado completo en DuckStation
+- [x] Arreglos tras la prueba: cuelgue del GPU con subidas de tamano impar, paletas que no se liberaban, posicion conservada en `show` sin `at`
+- [x] Fondos con Pan (stairs, fanglookback, pathetic, roomthrash1): imagen completa en RAM, ventana visible en VRAM
+- [x] Modo saltar segun el plan: R1 activa/detiene, ">> Saltando", sin lecturas de CD, se detiene en texto no leido, finales y cambio de capitulo; sigue tras una decision
+- [x] Galeria: se marcan las imagenes vistas (SCENE/SHOW/MARK_SEEN) con la tabla de GAME.BIN
+- [ ] Tu prueba: modo saltar y disco con todos los capitulos
+- Nota: RAM usada ~1.14 MB (bufer de 512 KB para fondos con Pan); revisar contra el bufer de carga en la Fase 8
 
 ## Siguiente
 - [ ] Tu revision de docs/decisiones.md, docs/bytecode.md y docs/presupuesto-memoria.md
-- [ ] Fase 7 - Motor PS1: interprete y escenas
+- [ ] Fase 8 - Motor PS1: audio, transiciones, guardado y menus
 
 ## Pendiente (fases siguientes)
 - [ ] Fase 7 - Motor PS1: interprete y escenas
