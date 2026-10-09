@@ -37,7 +37,11 @@ Ultima actualizacion: 2026-10-08
 - [x] D4: 320x240 (eleccion del usuario), D5: 8 bits con dither ordenado, D6: fuente 13 px y caja de 3 lineas
 - [x] Prueba tecnica XA + carga de datos del CD (D7: pausar, cargar por lotes contiguos y reanudar; hueco ~0.6 s por lote chico)
 - [ ] Fuente, compresion, formato de memory card
-- [ ] docs/bytecode.md, docs/presupuesto-memoria.md
+- [x] D8: musica 37.8 kHz estereo en carriles, efectos VAG, presupuesto de disco ~35% (docs/presupuesto-audio.md)
+- [x] docs/bytecode.md v1 escrito (pendiente de tu revision)
+- [ ] Compresion en disco
+- [ ] Formato de la memory card (numeros reales)
+- [ ] docs/presupuesto-memoria.md (VRAM/RAM)
 
 ## Pendiente (fases siguientes)
 - [ ] Fase 2 - Decisiones tecnicas y especificacion (bytecode, VRAM/RAM, memory card)
