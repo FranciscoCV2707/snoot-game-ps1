@@ -14,8 +14,15 @@ static int frames;
 
 static void begin_frame(void)
 {
+	DR_STP *off;
+
 	ClearOTagR(ot[db], LAYER_COUNT);
 	prim_next = prim_buf[db];
+	/* lo ultimo que dibuja el cuadro apaga el bit de mascara: si quedara puesto tambien se escribiria en las texturas
+	 * que se suben a VRAM y estropearia la mitad de sus pixeles (rayas verticales en DuckStation) */
+	off = (DR_STP *)video_alloc(sizeof(DR_STP));
+	setDrawStp(off, 0, 0);
+	video_add(LAYER_DEBUG, off);         /* primero en la capa 0 = lo ultimo en dibujarse */
 }
 
 void video_init(void)
@@ -101,11 +108,11 @@ void video_flip(void)
 {
 	DR_STP *stp = (DR_STP *)video_alloc(sizeof(DR_STP));
 
-	/* todo lo que se dibuja lleva el bit de mascara: asi una copia de la pantalla usada como textura de 15 bits no
+	/* lo que dibuja el cuadro lleva el bit de mascara: asi una copia de la pantalla usada como textura de 15 bits no
 	 * tiene negros transparentes (0x0000) y se puede mezclar (la GPU solo mezcla texeles con ese bit) */
 	if (stp) {
 		setDrawStp(stp, 1, 0);
-		video_add(LAYER_BG, stp);
+		video_add(LAYER_BG, stp);        /* ultimo en la capa del fondo = lo primero en dibujarse */
 	}
 	DrawSync(0);
 	VSync(0);
