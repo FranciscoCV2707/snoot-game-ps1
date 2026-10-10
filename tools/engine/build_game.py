@@ -262,7 +262,8 @@ def main():
     (WORK / "iso.xml").write_text(XML.format(files="\n".join(names)), encoding="utf-8")
 
     env = dict(os.environ, PATH=str(SDK_BIN) + os.pathsep + os.environ["PATH"])
-    run(["cmake", "--preset", "default", "."], cwd=ENGINE, env=env)
+    if subprocess.run(["cmake", "--preset", "default", "."], cwd=ENGINE, env=env, capture_output=True).returncode != 0:
+        run(["cmake", "--preset", "default", "--fresh", "."], cwd=ENGINE, env=env)   # cache de otra configuracion
     run(["cmake", "--build", "build"], cwd=ENGINE, env=env)
     shutil.copy(ENGINE / "build" / "snoot.exe", WORK / "snoot.exe")
     run([SDK_BIN / "mkpsxiso.exe", "-y", "-o", "snoot_game.bin", "-c", "snoot_game.cue", "iso.xml"], cwd=WORK)
