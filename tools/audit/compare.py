@@ -211,7 +211,7 @@ def compare(cap, start, top):
         shot = says[ia]["shot"]
         gid, text, draws, fails = ps1[ib]
         key = (shot, tuple(draws))
-        if key in seen or not shot:
+        if key in seen or not shot or not (cap / shot).exists():
             continue
         seen[key] = True
         ref = Image.open(cap / shot).convert("RGB").resize((W, H), Image.LANCZOS)

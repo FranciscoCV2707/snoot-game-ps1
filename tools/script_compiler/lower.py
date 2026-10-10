@@ -556,6 +556,8 @@ class Lowerer:
                 x0, y0, x1, y1, seconds = (float(v) for v in pan.groups())
                 anim = atl_module.compile_pan(self, key, (x0, y0), (x1, y1), seconds)
         self.reg.mark_full(iid)
+        # Ren'Py olvida el estado de los transforms al vaciar la escena: lo siguiente empieza en la posicion por defecto
+        self.reg.pos_state.clear()
         self.emit("SCENE", n.line, image=iid, anim=anim)
         if self.under_camera():
             self.ir.insts[-1].args["_shot"] = {"key": key, "xalign": 0.5, "yalign": 1.0, "zoom": 1.0,
@@ -750,8 +752,10 @@ class Lowerer:
 
     def n_Hide(self, n, state):
         self.emit("HIDE", n.line, tag=self.reg.tag(n.tag))
+        self.reg.pos_state.pop(n.tag, None)
         for companion in state.comp.pop(n.tag, []):
             self.emit("HIDE", n.line, tag=self.reg.tag(companion))
+            self.reg.pos_state.pop(companion, None)
             state.z.pop(companion, None)
         state.tags.pop(n.tag, None)
         state.z.pop(n.tag, None)
