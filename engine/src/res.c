@@ -10,7 +10,7 @@
 #define CELL_WORDS    16
 #define CELL_ROWS     16
 #define GRID_W        20                /* 320 palabras */
-#define GRID_H        30                /* 480 filas */
+#define GRID_H        32                /* 512 filas: las paletas de las filas 480+ estan en x < 320 (fuera de estas zonas) */
 #define BAND_ROWS     16                /* una imagen no puede cruzar la fila 256 de VRAM */
 #define CLUT_ROWS     16
 
@@ -21,14 +21,16 @@ typedef struct {
 	int gx, gy, gw, gh;
 	int clut_bit;
 	uint32_t last_use;
+	uint32_t last_draw;                   /* ultimo cuadro en que se pidio para dibujar (0: solo precargada) */
 } Entry;
 
 static uint8_t file_buf[FILE_BYTES] __attribute__((aligned(4)));
 static Entry entries[MAX_ENTRIES];
 static uint8_t grid[2][GRID_H][GRID_W];     /* 0 libre, si no indice de entrada + 1 */
 static uint16_t clut_used;
-static uint32_t clock_now = 1;
+static uint32_t clock_now = 1, draw_clock = 2;
 volatile uint32_t res_fail_read, res_fail_vram, res_fail_clut;   /* contadores para la prueba automatica */
+volatile uint32_t res_snap_skip;                                  /* transiciones sin copia por falta de VRAM */
 volatile uint32_t res_fail_log[16];                               /* ultimas imagenes que no cupieron (+0x10000: paletas) */
 static int failed[16], failed_count;      /* imagenes que no se pudieron cargar en esta escena */
 
@@ -84,21 +86,33 @@ static void free_entry(Entry *e)
 	e->used = 0;
 }
 
-/* Desaloja la entrada menos usada que no pertenece a la escena actual. Devuelve 0 si no hay ninguna. */
-static int evict_one(void)
+void res_tick(void)
+{
+	draw_clock++;
+}
+
+/* Desaloja la entrada menos usada que no pertenece a la escena actual. Con for_draw tambien puede desalojar una de
+ * la escena actual que no se dibujo en este cuadro ni en el anterior (cuadros de animacion ya pasados o precargados).
+ * Devuelve 0 si no hay ninguna. */
+static int evict_one(int for_draw)
 {
 	int i, best = -1;
 
 	for (i = 0; i < MAX_ENTRIES; i++)
 		if (entries[i].used && entries[i].last_use < clock_now && (best < 0 || entries[i].last_use < entries[best].last_use))
 			best = i;
+	if (best < 0 && for_draw)
+		for (i = 0; i < MAX_ENTRIES; i++)
+			if (entries[i].used && entries[i].last_draw + 1 < draw_clock &&
+			    (best < 0 || entries[i].last_draw < entries[best].last_draw))
+				best = i;
 	if (best < 0)
 		return 0;
 	free_entry(&entries[best]);
 	return 1;
 }
 
-static Entry *new_entry(void)
+static Entry *new_entry(int for_draw)
 {
 	int i;
 
@@ -106,7 +120,7 @@ static Entry *new_entry(void)
 		for (i = 0; i < MAX_ENTRIES; i++)
 			if (!entries[i].used)
 				return &entries[i];
-		if (!evict_one())
+		if (!evict_one(for_draw))
 			return 0;
 	}
 }
@@ -123,7 +137,7 @@ static int take_clut(void)
 	return -1;
 }
 
-static const Image *load_image(int image_id);
+static const Image *load_image(int image_id, int for_draw);
 
 /* ---------------------------------------------------------------- cache de archivos en RAM (D7)
  * Cuando ya hay que pausar la musica para leer, se aprovecha la pausa para traer tambien las imagenes de las escenas
@@ -225,35 +239,140 @@ void res_prefetch(const uint16_t *ids, int n)
 	}
 }
 
-#define SNAP_GY 16                      /* copia de pantalla: banda baja de la zona de fondos, 320 x 192 filas */
+#define SNAP_GY 16                      /* copia de pantalla (320 x 192 filas en la zona de fondos): lugar preferido */
 #define SNAP_GH 12
 #define SNAP_MARK 0xFF
 
-void res_reserve_snapshot(int *vram_x, int *vram_y)
-{
-	int i, x, y;
+static int snap_gy = SNAP_GY;
 
+/* Costo de poner la copia en las filas gy..gy+SNAP_GH: lo que se dibujo en el ultimo cuadro cuenta mucho mas que lo
+ * que solo esta guardado */
+static int snapshot_cost(int gy)
+{
+	int i, cost = 0;
+
+	for (i = 0; i < MAX_ENTRIES; i++) {
+		const Entry *e = &entries[i];
+
+		if (e->used && e->has_cells && e->region == 1 && e->gy < gy + SNAP_GH && e->gy + e->gh > gy)
+			cost += e->gw * e->gh * (e->last_draw + 1 >= draw_clock ? 1000 : 1);
+	}
+	return cost;
+}
+
+static uint8_t trial[2][GRID_H][GRID_W];
+
+/* Ocupa en `trial` un rectangulo libre de gw x gh celdas (en cualquier zona, sin cruzar bandas) */
+static int trial_place(int gw, int gh)
+{
+	int region, band, x, y, i, j;
+
+	for (region = 0; region < 2; region++)
+		for (band = 0; band < GRID_H; band += BAND_ROWS) {
+			int band_end = band + BAND_ROWS < GRID_H ? band + BAND_ROWS : GRID_H;
+
+			for (y = band; y + gh <= band_end; y++)
+				for (x = 0; x + gw <= GRID_W; x++) {
+					int ok = 1;
+
+					for (j = y; j < y + gh && ok; j++)
+						for (i = x; i < x + gw && ok; i++)
+							ok = !trial[region][j][i];
+					if (!ok)
+						continue;
+					for (j = y; j < y + gh; j++)
+						memset(&trial[region][j][x], 1, gw);
+					return 1;
+				}
+		}
+	return 0;
+}
+
+/* Las imagenes en pantalla que la copia en las filas gy.. desalojaria, se pueden volver a acomodar en el resto
+ * (contando como libre lo que no esta en pantalla)? */
+static int fits_elsewhere(int gy)
+{
+	uint8_t moved[MAX_ENTRIES];
+	int region, x, y, i;
+
+	for (region = 0; region < 2; region++)
+		for (y = 0; y < GRID_H; y++)
+			for (x = 0; x < GRID_W; x++) {
+				int c = grid[region][y][x];
+
+				if (region == 1 && y >= gy && y < gy + SNAP_GH)
+					trial[region][y][x] = 1;
+				else
+					trial[region][y][x] = c != 0 && (c == SNAP_MARK || entries[c - 1].last_draw + 1 >= draw_clock);
+			}
+	for (i = 0; i < MAX_ENTRIES; i++) {
+		const Entry *e = &entries[i];
+
+		moved[i] = e->used && e->has_cells && e->region == 1 && e->gy < gy + SNAP_GH && e->gy + e->gh > gy &&
+		           e->last_draw + 1 >= draw_clock;
+		if (moved[i])                    /* sus celdas fuera de la franja quedan libres al desalojarla */
+			for (y = e->gy; y < e->gy + e->gh; y++)
+				if (y < gy || y >= gy + SNAP_GH)
+					memset(&trial[1][y][e->gx], 0, e->gw);
+	}
+	for (;;) {                           /* de la mas grande a la mas chica */
+		int best = -1;
+
+		for (i = 0; i < MAX_ENTRIES; i++)
+			if (moved[i] && (best < 0 || entries[i].gw * entries[i].gh > entries[best].gw * entries[best].gh))
+				best = i;
+		if (best < 0)
+			return 1;
+		moved[best] = 0;
+		if (!trial_place(entries[best].gw, entries[best].gh))
+			return 0;
+	}
+}
+
+int res_reserve_snapshot(int *vram_x, int *vram_y)
+{
+	/* filas posibles: dentro de una banda (la copia no puede cruzar la fila 256 de VRAM) */
+	static const int8_t rows[] = { SNAP_GY, GRID_H - SNAP_GH, 0, BAND_ROWS - SNAP_GH };
+	int i, x, y, best = 0, best_cost = -1;
+
+	/* lo que esta en pantalla y se quita se vuelve a cargar al dibujar: solo se acepta una franja si hay lugar para
+	 * eso; si ninguna sirve, mejor sin copia */
+	for (i = 0; i < (int)sizeof(rows); i++) {
+		int cost = snapshot_cost(rows[i]);
+
+		if ((best_cost < 0 || cost < best_cost) && (cost < 1000 || fits_elsewhere(rows[i]))) {
+			best = rows[i];
+			best_cost = cost;
+		}
+	}
+	if (best_cost < 0) {
+		res_snap_skip++;
+		return 0;
+	}
 	for (i = 0; i < MAX_ENTRIES; i++) {
 		Entry *e = &entries[i];
 
-		if (e->used && e->has_cells && e->region == 1 && e->gy < SNAP_GY + SNAP_GH && e->gy + e->gh > SNAP_GY)
+		if (e->used && e->has_cells && e->region == 1 && e->gy < best + SNAP_GH && e->gy + e->gh > best)
 			free_entry(e);
 	}
-	for (y = SNAP_GY; y < SNAP_GY + SNAP_GH; y++)
+	for (y = best; y < best + SNAP_GH; y++)
 		for (x = 0; x < GRID_W; x++)
 			grid[1][y][x] = SNAP_MARK;
+	snap_gy = best;
 	*vram_x = VRAM_BG_X;
-	*vram_y = SNAP_GY * CELL_ROWS;
+	*vram_y = best * CELL_ROWS;
+	return 1;
 }
 
 void res_release_snapshot(void)
 {
 	int x, y;
 
-	for (y = SNAP_GY; y < SNAP_GY + SNAP_GH; y++)
+	for (y = snap_gy; y < snap_gy + SNAP_GH; y++)
 		for (x = 0; x < GRID_W; x++)
 			if (grid[1][y][x] == SNAP_MARK)
 				grid[1][y][x] = 0;
+	failed_count = 0;                /* lo que no cupo durante la transicion se vuelve a intentar */
 }
 
 const Image *res_get(int image_id)
@@ -264,10 +383,24 @@ const Image *res_get(int image_id)
 	for (i = 0; i < failed_count; i++)
 		if (failed[i] == image_id)
 			return 0;
-	img = load_image(image_id);
+	img = load_image(image_id, 1);
 	if (!img && failed_count < 16)
 		failed[failed_count++] = image_id;
 	return img;
+}
+
+void res_touch(int image_id)
+{
+	int i;
+
+	for (i = 0; i < MAX_ENTRIES; i++)
+		if (entries[i].used && entries[i].id == image_id)
+			entries[i].last_use = clock_now;
+}
+
+void res_preload(int image_id)
+{
+	load_image(image_id, 0);
 }
 
 const Image *res_peek(int image_id)
@@ -280,7 +413,8 @@ const Image *res_peek(int image_id)
 	return 0;
 }
 
-static const Image *load_image(int image_id)
+/* for_draw = 0: precarga opcional; solo usa espacio libre o de escenas anteriores y no cuenta como falla */
+static const Image *load_image(int image_id, int for_draw)
 {
 	char path[24];
 	int i, size, kind, w, h, region, gw, gh, big, gx = 0, gy = 0;
@@ -290,12 +424,14 @@ static const Image *load_image(int image_id)
 	for (i = 0; i < MAX_ENTRIES; i++)
 		if (entries[i].used && entries[i].id == image_id) {
 			entries[i].last_use = clock_now;
+			if (for_draw)
+				entries[i].last_draw = draw_clock;
 			return &entries[i].img;
 		}
+	sprintf(path, "\\DATA\\I%04d.IMG", image_id);
 
 	data = cache_lookup(image_id, &size);         /* ya leida de antemano: sin tocar el CD */
 	if (!data) {
-		sprintf(path, "\\DATA\\I%04d.IMG", image_id);
 		size = cd_read_file(path, file_buf, FILE_BYTES);
 		data = file_buf;
 	}
@@ -317,13 +453,14 @@ static const Image *load_image(int image_id)
 		gh = (BIG_WIN_H + CELL_ROWS - 1) / CELL_ROWS;
 	}
 
-	e = new_entry();
+	e = new_entry(for_draw);
 	if (!e)
 		return 0;
 	memset(e, 0, sizeof(*e));
 	e->clut_bit = -1;
 	e->id = image_id;
 	e->last_use = clock_now;
+	e->last_draw = for_draw ? draw_clock : 0;
 
 	if (kind <= 1 && w > 0) {
 		/* lo que no entra en su zona (sprites o fondos) usa el hueco libre de la otra antes de desalojar */
@@ -334,7 +471,9 @@ static const Image *load_image(int image_id)
 				region = 1 - region;
 				break;
 			}
-			if (!evict_one()) {
+			if (!evict_one(for_draw)) {
+				if (!for_draw)
+					return 0;
 				res_fail_log[(res_fail_vram + res_fail_clut) & 15] = (uint32_t)image_id;
 				res_fail_vram++;
 				printf("res: sin espacio en VRAM para %s\n", path);
@@ -342,9 +481,11 @@ static const Image *load_image(int image_id)
 			}
 		}
 		e->clut_bit = take_clut();
-		while (e->clut_bit < 0 && evict_one())
+		while (e->clut_bit < 0 && evict_one(for_draw))
 			e->clut_bit = take_clut();
 		if (e->clut_bit < 0) {
+			if (!for_draw)
+				return 0;
 			res_fail_log[(res_fail_vram + res_fail_clut) & 15] = (uint32_t)image_id | 0x10000;
 			res_fail_clut++;
 			printf("res: sin paletas libres\n");

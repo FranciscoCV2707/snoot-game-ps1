@@ -147,6 +147,10 @@ static void sync(void)
 	dirty = 0;
 	res_new_scene();
 	count = scene_sorted(&vm, order);
+	if (vm.bg)
+		res_touch(vm.bg);
+	for (rank = 0; rank < count; rank++)
+		res_touch(order[rank]->image);
 	for (rank = count - 1; rank >= 0 && !covered; rank--) {
 		const Image *img = get(order[rank]->image);
 
@@ -159,7 +163,7 @@ static void sync(void)
 	for (rank = count - 1; rank >= first; rank--) {
 		n = scene_event_images(&vm, order[rank], extra, SCENE_MAX_EVENTS);
 		for (i = 0; i < n; i++)
-			res_get(extra[i]);
+			res_preload(extra[i]);
 	}
 }
 

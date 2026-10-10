@@ -32,7 +32,7 @@ BUTTONS = {"SELECT": 1 << 0, "START": 1 << 3, "UP": 1 << 4, "RIGHT": 1 << 5, "DO
            "L2": 1 << 8, "R2": 1 << 9, "L1": 1 << 10, "R1": 1 << 11, "TRIANGLE": 1 << 12, "CIRCLE": 1 << 13,
            "CROSS": 1 << 14, "SQUARE": 1 << 15}
 SHOT, QUIT, AUTOPLAY = 0xFFFF, 0xFFFE, 0xFFFD
-WATCH = ("frames", "res_fail_read", "res_fail_vram", "res_fail_clut")   # variables del motor que se anotan en cada captura
+WATCH = ("frames", "res_fail_read", "res_fail_vram", "res_fail_clut", "res_snap_skip")   # variables del motor que se anotan en cada captura
 
 LUA = """
 local ffi = require('ffi')

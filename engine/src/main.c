@@ -569,6 +569,12 @@ static void scene_sync(void)
 	scene_dirty = 0;
 	res_new_scene();
 	count = scene_sorted(&vm, order);
+	/* lo que la escena ya tiene cargado queda protegido antes de cargar lo nuevo (si no, el fondo, que se pide al
+	 * final, podia desalojarse para hacer lugar a los personajes) */
+	if (vm.bg)
+		res_touch(vm.bg);
+	for (rank = 0; rank < count; rank++)
+		res_touch(order[rank]->image);
 	for (rank = count - 1; rank >= 0 && !covered; rank--) {
 		const Image *img = res_get(order[rank]->image);
 
@@ -581,7 +587,7 @@ static void scene_sync(void)
 	for (rank = count - 1; rank >= first; rank--) {
 		n = scene_event_images(&vm, order[rank], extra, SCENE_MAX_EVENTS);
 		for (i = 0; i < n; i++)
-			res_get(extra[i]);
+			res_preload(extra[i]);
 	}
 }
 
@@ -649,8 +655,10 @@ static void begin_transition(void)
 		return;
 	if (trans_type == TR_DISSOLVE || trans_type == TR_FADE || trans_type == TR_FADE_WHITE) {
 		/* el cuadro anterior se guarda en VRAM antes de cargar lo nuevo */
-		res_reserve_snapshot(&snap_x, &snap_y);
-		video_snapshot(snap_x, snap_y);
+		if (res_reserve_snapshot(&snap_x, &snap_y))
+			video_snapshot(snap_x, snap_y);
+		else
+			snap_x = -1;             /* VRAM llena con lo que esta en pantalla: corte (la duracion se mantiene) */
 	}
 	if (trans_type == TR_MOVE)
 		for (i = 0; i < VM_MAX_SPRITES; i++) {
@@ -735,6 +743,8 @@ static int transition_brightness(void)
 	p = trans_t * 256 / trans_len;
 	if (trans_type == TR_DISSOLVE && snap_x >= 0)
 		return p;
+	if (trans_type == TR_FADE && trans_t < trans_a && snap_x < 0)    /* sin copia: la salida oscurece lo nuevo */
+		return (trans_a - trans_t) * 256 / trans_a;
 	if (trans_type == TR_FADE && trans_t >= trans_a + trans_b)
 		return (trans_t - trans_a - trans_b) * 256 / (trans_c ? trans_c : 1);
 	return 256;
@@ -974,16 +984,18 @@ static void run_vm(void)
 	vm.now = (uint32_t)video_frames();
 	ev = vm_run(&vm);
 
-	if (ev == VM_EV_TRANSITION) {
-		snap_box = box_level >= BOX_FADE;
-		begin_transition();          /* antes de cargar lo nuevo: guarda el cuadro anterior */
-		if (!win_on)
-			box_level = 0;           /* la caja que se oculta ya va en la copia y se desvanece con ella */
-	}
 	{
 		int changed = scene_dirty && !skip_mode;
 
+		/* lo nuevo se carga antes de reservar la copia de la transicion (que sale del framebuffer, no de las
+		 * texturas): asi la reserva sabe que espacio queda de verdad */
 		scene_sync();
+		if (ev == VM_EV_TRANSITION) {
+			snap_box = box_level >= BOX_FADE;
+			begin_transition();
+			if (!win_on)
+				box_level = 0;       /* la caja que se oculta ya va en la copia y se desvanece con ella */
+		}
 		/* si ya hubo que leer el disco, se aprovecha la pausa para traer las imagenes de las escenas que siguen */
 		if (changed && audio_cd_paused()) {
 			uint16_t ids[LOOKAHEAD_IMAGES];
@@ -2104,6 +2116,7 @@ int main(int argc, const char *argv[])
 		}
 		if (state <= ST_ERROR || state == ST_TRANS)
 			update_box();                /* en la pausa y los menus la caja queda como estaba */
+		res_tick();
 
 		transition_offset();
 		img_brightness = transition_brightness();

@@ -6,6 +6,7 @@ Hecho:
 - Las lecturas de cada paso de la VM comparten una sola pausa de la musica.
 - Precarga de las imagenes de las escenas siguientes en un cache de RAM (320 KB) aprovechando esa pausa.
 - Disolver continuo con brillo de texturas en vez de pasos.
+- VRAM: los cuadros de animacion precargados ya no bloquean espacio y al dibujar se desaloja lo que no se dibujo en los ultimos 2 cuadros (ruta 3: de 34 fallas a 0, videollamada y grano completos). La copia de las transiciones ya no borra el fondo visible (pasillo del capitulo 10 quedaba en negro); si no hay lugar, la transicion es un corte (9 casos en las escenas con 9 personajes). El fondo ya no se desaloja para cargar personajes de la misma escena y las zonas de VRAM usan las 512 filas. Resultado del playtest: 0 imagenes sin cargar en las 15 corridas.
 - Caja de texto como `window auto` de Ren'Py: fundido de 0.2 s al aparecer y ocultarse, caja vacia en pausas, `window show/hide` respetados (antes se ignoraban). Verificado midiendo el oscurecimiento de la caja cuadro a cuadro en PCSX-Redux.
 ## 2026-10-09 - Fases 8 y 9, inicio de la 10
 Hecho:

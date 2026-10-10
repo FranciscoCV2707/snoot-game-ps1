@@ -88,7 +88,8 @@ Ultima actualizacion: 2026-10-10
 - [x] Cargas (D7): tabla de sectores FILES.BIN, una sola pausa de la musica por paso del guion y precarga de las imagenes siguientes en un cache de RAM de 320 KB
 - [x] `python -m tools.release 0.1` -> dist/SnootGamePS1-v0.1.zip (168 MB) con todo lo anterior
 - [ ] Tu prueba en DuckStation con sonido (que la musica no se corte entre escenas)
-- Conocido: en la ruta 3 hay 34 cuadros (grano y video del telefono) que no caben en VRAM; se muestra la imagen base
+- [x] VRAM: videollamada y grano de la ruta 3 completos (antes 34 cuadros sin cargar) y fondo del pasillo del capitulo 10 que se perdia tras una transicion; playtest con 0 imagenes sin cargar en las 15 corridas
+- Conocido: en las escenas con 9 personajes (Trigga III, Naomi I) 9 transiciones se hacen como corte por falta de VRAM
 - Conocido: Fang en el acuario de 12D, videollamada de 13C y dimmer del 40% (se usa 50%) no son identicos a Ren'Py
 - Nota: RAM usada ~1.6 MB de 2 MB
 

@@ -21,6 +21,8 @@ Estado: Fase 8 casi completa (audio, transiciones, titulo, pausa, guardado, opci
 - **Capas:** `video_add(capa, primitiva)`. La capa 0 queda al frente. Dentro de una capa, lo agregado despues se dibuja antes (la tabla de orden inserta al inicio), por eso las paginas de textura se agregan despues de los sprites que las usan.
 - **Recorte:** la escena se dibuja solo en las 180 lineas centrales (`video_clip_scene`); la caja de texto y la interfaz usan toda la pantalla (`video_unclip`).
 - **Mapa de VRAM** (palabras de 16 bits): framebuffers (0,0) y (0,240); fondo (640,0); sprites (320,0); fuente (960,0); paletas de imagenes en las filas 480 y 481; paleta de la fuente en (0,500).
+- **Desalojo de VRAM** (`res.c`): primero lo de escenas anteriores; si no alcanza para dibujar, lo de la escena actual que no se dibujo en este cuadro ni en el anterior (cuadros de animacion ya pasados). Los cuadros futuros de las animaciones se precargan solo con espacio libre (`res_preload`), sin desalojar ni contar como falla. Al preparar una escena, lo que ya tiene cargado se marca primero (`res_touch`) para que lo nuevo no lo desaloje. La copia de las transiciones se reserva despues de cargar lo nuevo, en la franja de la zona de fondos que menos tape lo que esta en pantalla; si lo que quitaria no se puede volver a acomodar en el resto (prueba exacta en una copia de la cuadricula), la transicion se hace como corte con la misma duracion (`res_snap_skip`). Al liberarla se reintenta lo que no cupo.
+- Las zonas de sprites y fondos usan las 512 filas (dos bandas de 256): las paletas de las filas 480+ estan en x < 320.
 - **Texto:** las cadenas vienen ya partidas en lineas (`\n`) y paginas; los codigos 1 a 6 y `\n`, salto de pagina se interpretan en `text.c`. Cursiva usa glifos inclinados del atlas; negrita dibuja cada glifo dos veces. Los demas codigos de tamano se ignoran por ahora.
 
 ## Controles
@@ -43,7 +45,7 @@ X avanza o completa el texto y confirma, O vuelve, Start abre la pausa (en una l
 Camara animada, packs de carga (Fase 9) y miniaturas en ranuras y galeria (opcional).
 
 ## Transiciones
-- Dissolve y fundidos guardan el ultimo cuadro en VRAM (`video_snapshot`, banda baja de la zona de fondos reservada con `res_reserve_snapshot`) y lo dibujan como textura de 15 bits encima de la escena nueva.
+- Dissolve y fundidos guardan el ultimo cuadro en VRAM (`video_snapshot`, en una franja de la zona de fondos reservada con `res_reserve_snapshot`) y lo dibujan como textura de 15 bits encima de la escena nueva.
 - Todo se dibuja con el bit de mascara (DR_STP): asi la copia no tiene negros transparentes y la GPU puede mezclarla.
 - Dissolve continuo: la escena nueva se dibuja con brillo t (modulacion de color de las texturas, `img_brightness`) y encima se suma la copia de la anterior con brillo 1 - t. Fundido a negro: la copia se oscurece multiplicada y la escena nueva entra subiendo el brillo. Fundido a blanco: suma de un gris.
 - vpunch/hpunch desplazan toda la escena; MoveTransition lleva cada sprite de donde estaba (o desde el borde) a su posicion nueva.
