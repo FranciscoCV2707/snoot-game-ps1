@@ -188,6 +188,9 @@ def effect(recipe):
         return matrix_apply(img, str(args[0]))
     if name == "Transform":
         xs, ys, fit, zoom = kwargs.get("xsize"), kwargs.get("ysize"), kwargs.get("fit"), kwargs.get("zoom")
+        if kwargs.get("blur"):
+            # blur de Ren'Py en pixeles; desviacion de la gaussiana aproximada a la mitad
+            img = img.filter(ImageFilter.GaussianBlur(float(kwargs["blur"]) / 2))
         if zoom:
             return img.resize((max(1, round(img.width * zoom)), max(1, round(img.height * zoom))), Image.LANCZOS)
         if xs and ys and fit == "cover":

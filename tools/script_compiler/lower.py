@@ -109,6 +109,31 @@ class Registry:
             self.images[iid]["names"].append(name)
         return iid, flip
 
+    def camera_shot(self, layers, camera):
+        """Imagen nueva con la escena vista por la camara: pantalla = zoom * punto - (x, y), en pixeles de 1920x1080."""
+        zc, tx, ty = camera["zoom"], camera["x"], camera["y"]
+        parts = []
+        for layer in layers:
+            recipe, flip = self.project.images.canonical(layer["key"])
+            w, h = atl_module.recipe_size(recipe)
+            zoom = layer["zoom"]
+            x = layer["xalign"] * (atl_module.SCREEN_W - w * zoom)
+            y = layer["yalign"] * (atl_module.SCREEN_H - h * zoom)
+            src = recipe
+            if flip:
+                src = {"op": "flip", "src": src, "horizontal": True}
+            if abs(zc * zoom - 1.0) > 1e-6:
+                src = {"op": "effect", "effect": "Transform", "src": src, "args": [], "kwargs": {"zoom": zc * zoom}}
+            parts.append({"pos": [zc * x - tx, zc * y - ty], "src": src})
+        recipe = {"op": "composite", "size": [int(atl_module.SCREEN_W), int(atl_module.SCREEN_H)], "layers": parts}
+        sig = repr(recipe)
+        if sig not in self._image_ids:
+            self._image_ids[sig] = len(self.images)
+            self.images.append({"recipe": recipe, "names": [f"camera shot {len(self.images)}"]})
+        iid = self._image_ids[sig]
+        self.mark_full(iid)
+        return iid
+
     def audio_id(self, path):
         real = self.project.audio_path(path)
         if real is None:
@@ -245,7 +270,44 @@ class Lowerer:
         state = self.block(self.ch.nodes, state)
         if state is not None:
             self.emit("RETURN")
+        self.prerender_camera_shots()
         return self.ir
+
+    # -- tomas con camara -----------------------------------------------------
+    def under_camera(self):
+        return not self.dry and abs(self.reg.camera["zoom"] - 1.0) > 1e-6
+
+    def shot_layer(self, tag, key):
+        """Posicion y zoom finales de un sprite (pixeles de 1920x1080) para pre-renderizar una toma con camara."""
+        w, h = atl_module.image_size(self.p, key)
+        st = atl_module.State(w, h)
+        st.__dict__.update({k: v for k, v in (self.reg.pos_state.get(tag) or {}).items() if k not in ("w", "h", "reveal")})
+        xa, ya = st.effective()
+        return {"key": key, "xalign": xa, "yalign": ya, "zoom": st.zoom}
+
+    def prerender_camera_shots(self):
+        """Una escena armada bajo `camera` con zoom (SCENE + SHOW) se reemplaza por una sola imagen ya encuadrada.
+
+        En la PS1 escalar 3x los fondos de 320x180 se veria borroso; la toma se compone en la PC desde los originales
+        (incluidos los sprites en alta resolucion) y el motor solo muestra un fondo fijo.
+        """
+        insts, out, i = self.ir.insts, [], 0
+        while i < len(insts):
+            inst = insts[i]
+            shot = inst.args.pop("_shot", None)
+            if inst.op == "SCENE" and shot:
+                layers, i = [shot], i + 1
+                while i < len(insts) and insts[i].op == "SHOW" and "_shot" in insts[i].args:
+                    layers.append(insts[i].args.pop("_shot"))
+                    i += 1
+                inst.args.update(image=self.reg.camera_shot(layers, shot["camera"]), anim=0)
+                out.append(inst)
+                continue
+            if shot:
+                self.ir.warnings.append(f"{inst.file}:{inst.line}: {inst.op} bajo camera sin SCENE previo: se muestra sin zoom")
+            out.append(inst)
+            i += 1
+        insts[:] = out
 
     def block(self, nodes, state):
         for node in nodes:
@@ -495,6 +557,9 @@ class Lowerer:
                 anim = atl_module.compile_pan(self, key, (x0, y0), (x1, y1), seconds)
         self.reg.mark_full(iid)
         self.emit("SCENE", n.line, image=iid, anim=anim)
+        if self.under_camera():
+            self.ir.insts[-1].args["_shot"] = {"key": key, "xalign": 0.5, "yalign": 1.0, "zoom": 1.0,
+                                               "camera": dict(self.reg.camera)}
         state = VState()
         state.tags["_scene"] = {key}
         if n.with_:
@@ -534,9 +599,12 @@ class Lowerer:
         anim, final = atl_module.compile_anim(self, n, extra_transforms, slideshow=None if patched else spec)
         flags = FLAG_FLIP if flip else 0
         self.emit("SHOW", n.line, tag=self.reg.tag(n.tag), image=iid, pos=pos, z=z, flags=flags, anim=anim)
+        shown = self.ir.insts[-1] if not self.dry else None
         if patched:
             self.show_patch(n, state, spec, pos, z)
         self.track_visibility(n.tag, iid, pos, anim, bool(flip))
+        if shown is not None and self.under_camera():
+            shown.args["_shot"] = self.shot_layer(n.tag, key)
         state.tags[n.tag] = {final or key}
         if final:
             self.reg.last_key[n.tag] = final
