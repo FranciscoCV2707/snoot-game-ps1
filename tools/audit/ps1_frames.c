@@ -139,24 +139,28 @@ static const Image *get(int id)
 static void sync(void)
 {
 	const VmSprite *order[VM_MAX_SPRITES];
-	int rank;
+	uint16_t extra[SCENE_MAX_EVENTS];
+	int rank, i, n, count, first = 0, covered = 0;
 
 	if (!dirty)
 		return;
 	dirty = 0;
 	res_new_scene();
-	for (rank = scene_sorted(&vm, order) - 1; rank >= 0; rank--) {
+	count = scene_sorted(&vm, order);
+	for (rank = count - 1; rank >= 0 && !covered; rank--) {
 		const Image *img = get(order[rank]->image);
-		uint16_t extra[SCENE_MAX_EVENTS];
-		int i, n = scene_event_images(&vm, order[rank], extra, SCENE_MAX_EVENTS);
 
-		for (i = 0; i < n; i++)
-			get(extra[i]);
-		if (img && covers_view(img, order[rank]))
-			return;
+		first = rank;
+		covered = img && covers_view(img, order[rank]);
 	}
-	if (vm.bg)
+	if (vm.bg && !covered)
 		get(vm.bg);
+	/* como el motor: las imagenes futuras de las animaciones solo si sobra VRAM (sin avisar si no caben) */
+	for (rank = count - 1; rank >= first; rank--) {
+		n = scene_event_images(&vm, order[rank], extra, SCENE_MAX_EVENTS);
+		for (i = 0; i < n; i++)
+			res_get(extra[i]);
+	}
 }
 
 /* Lo mismo que draw_scene, pero de atras hacia adelante.

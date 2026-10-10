@@ -48,7 +48,7 @@ class Images:
             head = struct.unpack_from(HEADER, raw, 0)
             kind, full_w, full_h = head[1], head[3], head[4]
             solid = head[9:13]
-            self.cache[iid] = (kind, full_w, full_h, solid, load_img(path))
+            self.cache[iid] = (kind, full_w, full_h, solid, load_img(path), bool(head[2] & 4))
         return self.cache[iid]
 
 
@@ -70,7 +70,7 @@ def compose(images, draws):
             continue
         iid, x, y, flip = d[:4]
         zoom, tint = (d[4], tuple(d[5:8])) if len(d) > 4 else (64, (128, 128, 128))
-        kind, full_w, full_h, solid, bitmap = images.get(iid)
+        kind, full_w, full_h, solid, bitmap, translucent = images.get(iid)
         if kind == 2:
             canvas[:] = solid[:3]
             continue
@@ -95,7 +95,10 @@ def compose(images, draws):
             continue
         sub = canvas[y0 + sy0:y0 + ey, x0 + sx0:x0 + ex]
         m = mask[sy0:ey, sx0:ex]
-        sub[m] = rgb[sy0:ey, sx0:ex][m]
+        if translucent:
+            sub[m] = ((sub[m].astype(np.uint16) + rgb[sy0:ey, sx0:ex][m]) // 2).astype(np.uint8)
+        else:
+            sub[m] = rgb[sy0:ey, sx0:ex][m]
     return Image.fromarray(canvas)
 
 

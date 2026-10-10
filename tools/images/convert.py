@@ -38,6 +38,13 @@ KIND_BG, KIND_SPRITE, KIND_SOLID, KIND_EMPTY = 0, 1, 2, 3
 KIND_NAMES = {0: "fondo", 1: "sprite", 2: "color", 3: "vacio"}
 FMT_VERSION = 1
 HEADER = "<4sBBHHHHHH4BH"
+FLAG_TRANSLUCENT = 4         # bit2 de flags: se dibuja con la mezcla al 50% de la GPU (CLUT con bit STP)
+
+
+def uniform_translucent(alpha):
+    """Alfa parejo y a medias en todo lo visible (como el grano de pelicula): se ve mejor mezclado que tramado."""
+    body = alpha[alpha > 24].astype(np.float32)
+    return body.size > 0 and 64 <= float(body.mean()) <= 210 and float(body.std()) < 25
 
 
 def to555(rgb):
@@ -193,20 +200,25 @@ def phase3(task):
     else:
         pal = palette_image(flat)
         idx = quantize_with(rgb, pal, meta.get("name") not in NO_DITHER, (meta.get("x", 0), meta.get("y", 0))).astype(np.int16) + 1
-        if meta.get("semi", 0) > 0.30:    # efectos translucidos (vineta, brillos): el alfa se convierte en tramado
+        translucent = meta.get("semi", 0) > 0.30 and uniform_translucent(alpha)
+        if translucent:                   # velo de alfa parejo (grano de pelicula): mezcla al 50% de la GPU
+            idx[alpha <= 24] = 0
+        elif meta.get("semi", 0) > 0.30:  # efectos translucidos (vineta, brillos): el alfa se convierte en tramado
             tile = np.tile((PSX_DITHER + 4.5) / 8.0, (alpha.shape[0] // 4 + 1, alpha.shape[1] // 4 + 1))[:alpha.shape[0], :alpha.shape[1]]
             idx[(alpha / 255.0) <= tile] = 0
         else:
             idx[alpha < 128] = 0
         idx = idx.astype(np.uint8)
         colors = [0, 0, 0] + list(flat)
-        flags = 1 | (2 if meta.get("half") else 0)
+        flags = 1 | (2 if meta.get("half") else 0) | (FLAG_TRANSLUCENT if translucent else 0)
     h, w = idx.shape
     if w % 2:
         idx = np.pad(idx, ((0, 0), (0, 1)))
         w += 1
     entries = [colors[i:i + 3] for i in range(0, len(colors), 3)]
     words = [to555(c) for c in entries] + [0] * (256 - len(entries))
+    if flags & FLAG_TRANSLUCENT:
+        words = [w_ | 0x8000 for w_ in words]    # bit STP: la GPU solo mezcla los texeles que lo tienen
     if flags & 1:
         words[0] = 0
     raw = idx.tobytes()

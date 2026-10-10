@@ -203,6 +203,7 @@ void img_draw_ex(const Image *img, int layer, int screen_x, int screen_y, int fl
 			setXY4(p, x0, y0, x1, y0, x0, y1, x1, y1);
 			setUV4(p, ua, v, ub, v, ua, v + img->h - 1, ub, v + img->h - 1);
 			setRGB0(p, r, g, b);
+			setSemiTrans(p, img->flags & IMG_TRANSLUCENT);
 			p->clut = getClut(0, img->clut_y);
 			p->tpage = getTPage(1, 0, page_x, img->vram_y);
 			video_add(layer, p);
@@ -216,6 +217,7 @@ void img_draw_ex(const Image *img, int layer, int screen_x, int screen_y, int fl
 			setWH(s, piece_w, img->h);
 			setUV0(s, u, v);
 			setRGB0(s, r, g, b);
+			setSemiTrans(s, img->flags & IMG_TRANSLUCENT);
 			setClut(s, 0, img->clut_y);
 			video_add(layer, s);
 			/* la pagina de textura va antes del sprite: se agrega despues porque lo agregado despues se dibuja antes */

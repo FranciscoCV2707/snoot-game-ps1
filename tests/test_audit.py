@@ -34,3 +34,11 @@ def test_recipe_size_applies_size_effects():
 
 def test_capture_runs_cover_routes_and_extras():
     assert {"base", "r1", "r2", "r3", "r4", "x1", "x10"} <= set(RUNS)
+
+
+def test_uniform_translucent_detects_even_veils_only():
+    from tools.images.convert import uniform_translucent
+    assert uniform_translucent(np.full((8, 8), 156, np.uint8))
+    ramp = np.tile(np.linspace(30, 255, 8).astype(np.uint8), (8, 1))
+    assert not uniform_translucent(ramp)
+    assert not uniform_translucent(np.full((8, 8), 255, np.uint8))

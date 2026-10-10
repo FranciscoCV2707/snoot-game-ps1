@@ -13,7 +13,9 @@ typedef struct {
 	uint8_t big;                  /* fondo mas grande que la VRAM disponible: vive en RAM (img_load_big) */
 } Image;
 
-#define BIG_WIN_W 320             /* ventana visible de un fondo grande: lo que ocupa en VRAM */
+#define IMG_TRANSLUCENT 0x04      /* flags: se dibuja mezclado al 50% (la paleta trae el bit STP) */
+
+#define BIG_WIN_W 320            /* ventana visible de un fondo grande: lo que ocupa en VRAM */
 #define BIG_WIN_H 180
 
 /* Descomprime y sube la imagen a VRAM en (vram_x, vram_y) con su paleta en la fila clut_y. Devuelve 0 si salio bien. */

@@ -20,7 +20,7 @@ Reportes: `build/reports/imagenes.md` (numeros) y `build/reports/arte/*.html` (h
 ```
 0x00  "IMG1"
 0x04  u8   tipo: 0 fondo/CG, 1 sprite, 2 color solido, 3 vacio
-0x05  u8   flags: bit0 el indice 0 es transparente, bit1 el bitmap esta a media resolucion
+0x05  u8   flags: bit0 el indice 0 es transparente, bit1 el bitmap esta a media resolucion, bit2 translucido (velo de alfa parejo, como el grano de pelicula: la paleta trae el bit STP y el motor lo mezcla al 50% con la GPU en vez de tramarlo)
 0x06  u16  ancho logico   (a escala de 320x240)
 0x08  u16  alto logico
 0x0A  u16  x, y, ancho y alto del bitmap dentro del tamano logico (el ancho se rellena a par)

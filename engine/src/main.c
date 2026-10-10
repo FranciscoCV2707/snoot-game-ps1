@@ -311,24 +311,27 @@ static void scene_sync(void)
 {
 	const VmSprite *order[VM_MAX_SPRITES];
 	uint16_t extra[SCENE_MAX_EVENTS];
-	int rank, i, n;
+	int rank, i, n, count, first = 0, covered = 0;
 
 	if (!scene_dirty || skip_mode)
 		return;                  /* al saltar no se lee el CD: la escena se carga una vez al detenerse */
 	scene_dirty = 0;
 	res_new_scene();
-	for (rank = scene_sorted(&vm, order) - 1; rank >= 0; rank--) {
+	count = scene_sorted(&vm, order);
+	for (rank = count - 1; rank >= 0 && !covered; rank--) {
 		const Image *img = res_get(order[rank]->image);
 
-		/* las imagenes que la animacion cambia en el camino se cargan ya, para no leer el CD a mitad */
+		first = rank;
+		covered = img && covers_view(img, order[rank]);
+	}
+	if (vm.bg && !covered)
+		res_get(vm.bg);
+	/* las imagenes que las animaciones muestran despues se cargan si sobra VRAM, para no leer el CD a mitad */
+	for (rank = count - 1; rank >= first; rank--) {
 		n = scene_event_images(&vm, order[rank], extra, SCENE_MAX_EVENTS);
 		for (i = 0; i < n; i++)
 			res_get(extra[i]);
-		if (img && covers_view(img, order[rank]))
-			return;
 	}
-	if (vm.bg)
-		res_get(vm.bg);
 }
 
 /* Imagen para dibujar: al saltar solo lo que ya esta en VRAM */
