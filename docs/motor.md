@@ -1,6 +1,6 @@
 # Motor PS1 (engine/)
 
-Estado: Fase 8 casi completa (audio, transiciones, titulo, pausa, guardado, opciones, galeria y extras). Falta probarla a fondo en consola o emulador. Se construye con `python -m tools.engine.build_game [--chapters 0,1]`, que genera `build/engine/snoot_game.cue` con los capitulos pedidos y solo las imagenes que usan.
+Estado: Fase 8 casi completa (audio, transiciones, titulo, pausa, guardado, opciones, galeria y extras). Falta probarla a fondo en consola o emulador. Se construye con `python -m tools.engine.build_game [--chapters 0,1]`, que genera `build/engine/snoot_game.cue` con los capitulos pedidos y solo las imagenes que usan. Se compila en Release (`-O2`, `CMakePresets.json`): en Debug (`-Og`) descomprimir tardaba mas del doble.
 
 ## Modulos
 | Archivo | Que hace |
@@ -37,6 +37,7 @@ X avanza o completa el texto y confirma, O vuelve, Start abre la pausa (en una l
 - Capitulos extra con la logica de `ex_ch_menu` del original (D1): segun los finales vistos y los extras terminados.
 - `SPECIAL 1` (chat del capitulo 4): la imagen `texts` en espanol en tiras de 320x180 (`ui textscroll N`, 0.4x del original); empieza abajo (lo mas reciente), se desplaza con arriba/abajo (R1 rapido) con barra de posicion; al llegar arriba (donde el original tenia el boton) aparece "Presiona X para continuar".
 - `SPECIAL 2` (creditos): las lineas de `credits.rpy` traducidas suben por la pantalla; X acelera.
+- `SPECIAL 3` (`renpy.input` de 13D, "¿Qué escribirás?"): teclado en pantalla de 10x5 teclas (numeros, letras con ñ, acentos y signos) y una fila de acciones (Mayús, Espacio, Borrar, Listo). D-pad mueve, X escribe, O borra, L1 cambia mayusculas, Start termina; hasta 36 caracteres. Como en el original, lo escrito no se usa despues.
 
 ## Prueba automatica
 `python -m tools.engine.emutest --steps "30 press CROSS; 200 shot juego; 210 quit"` arma un disco con `AUTOTEST.BIN` (botones por cuadro desde el titulo) y lo corre en PCSX-Redux sin interfaz; las capturas quedan en `build/emutest/`. No usa el teclado ni la pantalla de la PC.
@@ -57,12 +58,16 @@ Camara animada, packs de carga (Fase 9) y miniaturas en ranuras y galeria (opcio
 
 ## Audio
 - RAM de la SPU: 4 KB del sistema, zona de efectos (~284 KB, se vacia entera al llenarse) y 4 espacios de 56 KB para ambientes (voces 0-3). Efectos en las voces 4-23.
-- Al mostrar una linea se precargan los efectos de las siguientes instrucciones; al saltar (R1) no suenan los efectos.
+- Los efectos que vienen en el guion se ponen en cola (`audio_preload`) y se suben a la SPU en segundo plano de a 32 KB; si uno suena antes, se termina de subir en el momento. Los ambientes que vienen se traen a la cache de RAM de imagenes (`RES_SOUND`) y al sonar pasan de RAM a la SPU sin leer el CD. Al saltar (R1) no suenan los efectos.
+- Una cancion que empieza mientras hay una carga en curso arranca cuando termina (no se corta recien empezada).
 
 ## Lecturas del CD
 - `DATA/FILES.BIN` (lo arma `build_game.py` en dos pasadas): nombre, sector y tamano de cada archivo, ordenados por nombre. `cd_find` busca ahi en vez de `CdSearchFile`.
 - Cada paso de la VM (`run_vm`) agrupa sus lecturas con `audio_batch_begin/end`: la musica XA se pausa una sola vez.
-- Si en ese paso cambio la escena y la musica ya esta en pausa (o no suena), `look_ahead` recorre el guion (sigue los saltos fijos, para en menus y llamadas) y `res_prefetch` trae a un cache en RAM de 320 KB las imagenes que vienen, leyendo en orden de sector los archivos contiguos de una vez. Asi la siguiente escena no vuelve a cortar la musica.
+- Si en ese paso cambio la escena y la musica ya esta en pausa (o no suena), `look_ahead` recorre el guion (sigue los saltos fijos, para en menus y llamadas; incluye las 9 imagenes de `showCG()`) y `res_prefetch` trae a un cache en RAM de 320 KB las imagenes que vienen, leyendo en orden de sector los archivos contiguos de una vez. Asi la siguiente escena no vuelve a cortar la musica.
+- Mientras se lee una linea (`prefetch_next`) se revisa lo que se usa antes de la siguiente: si falta algo en VRAM, en la cache o en la SPU, se empieza a traer ya (la musica se pausa una linea antes, pero al avanzar no hay congelon). La precarga elige en orden del guion mientras quepa en la cache.
+- La precarga se lee en segundo plano (`cd_read_start`/`cd_read_poll`, tramos de hasta 64 sectores que avanzan en `res_tick`): el juego sigue dibujando y la musica sigue en pausa hasta que termina. Si hace falta una imagen que se esta precargando se espera solo hasta ella; cualquier otra lectura o comando de la musica espera el tramo en curso (`cd_wait`). Si empieza otra cancion a mitad de la precarga, se descarta el resto para no cortarla.
+- Congelones: el motor anota los cuadros que tardan mas de 0.1 s (`stall_count`, `stall_max`, `stall_log` con los 32 peores) y el playtest los lista con la linea del guion donde ocurrieron.
 - Los efectos de mas de 192 KB se convierten a 11 kHz (`tools/audio/convert.py`) para caber en su zona.
 
 ## Zona segura

@@ -18,6 +18,13 @@ const Image *res_peek(int image_id);
  * (sin reservar) si para eso habria que quitar algo que se esta dibujando. */
 int res_reserve_snapshot(int *vram_x, int *vram_y);
 void res_release_snapshot(void);
-/* Lee de una vez a la cache de RAM las imagenes de la lista que no esten en VRAM (las que vienen en el guion);
- * descarta de la cache las que ya no estan en la lista */
+/* Lee (en segundo plano) a la cache de RAM las imagenes de la lista que no esten en VRAM (las que vienen en el guion);
+ * descarta de la cache las que ya no estan en la lista. Con RES_SOUND el id es un sonido (S###.SPU: ambientes). */
+#define RES_SOUND 0x8000
 void res_prefetch(const uint16_t *ids, int n);
+/* 1 mientras la precarga se esta leyendo en segundo plano (avanza en res_tick; la musica sigue en pausa) */
+int res_prefetch_busy(void);
+/* 1 si la imagen esta en VRAM o el archivo en la cache de RAM (no hace falta leer el CD) */
+int res_have(int id);
+/* Archivo ya traido por la precarga (si se esta leyendo, lo espera); 0 si no esta */
+const uint8_t *res_cached_file(int id, int *size);

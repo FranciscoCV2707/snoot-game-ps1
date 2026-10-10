@@ -89,6 +89,8 @@ Ultima actualizacion: 2026-10-10
 - [x] `python -m tools.release 0.1` -> dist/SnootGamePS1-v0.1.zip (168 MB) con todo lo anterior
 - [ ] Tu prueba en DuckStation con sonido (que la musica no se corte entre escenas)
 - [x] VRAM: videollamada y grano de la ruta 3 completos (antes 34 cuadros sin cargar) y fondo del pasillo del capitulo 10 que se perdia tras una transicion; playtest con 0 imagenes sin cargar en las 15 corridas
+- [x] Tu segunda prueba: insultos del concierto legibles y dentro de la pantalla; teclado en pantalla en 13D (`renpy.input`)
+- [x] Congelones: precarga en segundo plano (imagenes, ambientes y efectos), revision de lo que viene en cada linea y motor en Release (-O2). Historia completa: de 316 congelones (peor 4.25 s, 156 s en total) a 131 (peor 1.05 s, 37 s); los que quedan son casi todos al empezar un capitulo
 - Conocido: en las escenas con 9 personajes (Trigga III, Naomi I) 9 transiciones se hacen como corte por falta de VRAM
 - Conocido: Fang en el acuario de 12D, videollamada de 13C y dimmer del 40% (se usa 50%) no son identicos a Ren'Py
 - Nota: RAM usada ~1.6 MB de 2 MB
@@ -97,6 +99,7 @@ Ultima actualizacion: 2026-10-10
 - [ ] Repartir la v0.1 a probadores y corregir lo que reporten
 - [x] Caja de texto con fundido y modo `window auto` como Ren'Py
 - [ ] Pulido opcional: movimientos lentos de sprites mas suaves
+- [ ] Opcional: precargar el capitulo siguiente para quitar el congelon de ~0.6 s al cambiar de capitulo
 - [ ] Fase 11 - Hardware real (tiempo de busqueda del CD, memory card fisica) y distribucion
 ## Notas
 - mkpsxiso 2.10 no admite rutas absolutas de Windows en el XML; usar rutas relativas (ver docs/entorno.md).

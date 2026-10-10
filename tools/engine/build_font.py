@@ -28,7 +28,7 @@ FONT_PATH = GAME / "gui" / "fonts" / "NotoSansJP-Regular.ttf"
 SIZE = 13
 ATLAS = 256
 LINE_HEIGHT = 14
-EXTRA_TEXT = "Comenzar Continuar Galería Opciones Guardar Cargar Volumen Música Efectos Seguir ▼▶◀↑↓ 0123456789"
+EXTRA_TEXT = "Comenzar Continuar Galería Opciones Guardar Cargar Volumen Música Efectos Seguir ▼▶◀↑↓ 0123456789 ñÑáéíóúÁÉÍÓÚ¿¡"
 SHEAR = 0.22
 
 

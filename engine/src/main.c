@@ -44,7 +44,8 @@ typedef struct {
 
 typedef enum {
 	ST_RUN, ST_SAY, ST_MENU, ST_PAUSE, ST_END, ST_ERROR, ST_DEV, ST_TRANS,
-	ST_TITLE, ST_PMENU, ST_SLOTS, ST_OPTIONS, ST_GALLERY, ST_EXTRAS, ST_CONFIRM, ST_NOTICE, ST_SCROLL, ST_CREDITS
+	ST_TITLE, ST_PMENU, ST_SLOTS, ST_OPTIONS, ST_GALLERY, ST_EXTRAS, ST_CONFIRM, ST_NOTICE, ST_SCROLL, ST_CREDITS,
+	ST_INPUT
 } State;
 
 static uint8_t file_buf[16 * 1024] __attribute__((aligned(4)));
@@ -418,7 +419,37 @@ static int op_size(const OpInfo *info)
 	return n;
 }
 
+/* Congelones: cuadros que tardaron mas de 0.1 s (lecturas del CD, descompresion). La prueba en emulador los lee:
+ * cuantos hubo, el mayor y los 32 peores como (vblanks << 24) | (capitulo << 18) | pc */
+#define STALL_VBLANKS 6
+#define STALL_LOG 32
+volatile uint32_t stall_count, stall_max, stall_total, stall_log[STALL_LOG];
+volatile uint32_t decode_vblanks;            /* preparar escenas sin contar el CD: descomprimir y subir a VRAM */
+extern volatile uint32_t cd_sync_vblanks, cd_wait_vblanks, res_trace_tag;
+
+static void log_stall(int vblanks)
+{
+	uint32_t entry;
+	int i, low = 0;
+
+	if (vblanks > 255)
+		vblanks = 255;
+	entry = ((uint32_t)vblanks << 24) | ((uint32_t)(vm.chapter & 63) << 18) | (vm.pc & 0x3FFFF);
+	for (i = 1; i < STALL_LOG; i++)
+		if (stall_log[i] < stall_log[low])
+			low = i;
+	if (entry > stall_log[low])
+		stall_log[low] = entry;
+	stall_count++;
+	stall_total += vblanks;
+	if ((uint32_t)vblanks > stall_max)
+		stall_max = vblanks;
+}
+
 #define LOOKAHEAD_IMAGES 32
+
+static int near_sfx_missing;                 /* look_ahead: un efecto de antes de la proxima linea no esta en la SPU */
+static int say_prefetched;                   /* ya se reviso lo que viene despues de la linea actual */
 
 static void add_image(uint16_t *ids, int *n, int id)
 {
@@ -432,13 +463,17 @@ static void add_image(uint16_t *ids, int *n, int id)
 	ids[(*n)++] = (uint16_t)id;
 }
 
-/* Recorre el guion hacia adelante (sin entrar en decisiones) juntando las imagenes que se van a mostrar y cargando
- * los efectos que van a sonar. `steps` limita cuantas instrucciones mira. */
-static int look_ahead(int steps, uint16_t *ids)
+/* Recorre el guion hacia adelante (sin entrar en decisiones) juntando las imagenes y ambientes que se van a usar; con
+ * `queue_sfx` pone en cola los efectos que van a sonar. En `*near` (si no es 0) deja cuantos se usan antes de la
+ * proxima linea. `steps` limita cuantas instrucciones mira. */
+static int look_ahead(int steps, uint16_t *ids, int *near, int queue_sfx)
 {
 	uint32_t pc = vm.pc;
-	int n = 0, k;
+	int n = 0, k, e;
 
+	near_sfx_missing = 0;
+	if (near)
+		*near = -1;
 	for (k = 0; k < steps && pc < vm.ch.code_size && n < LOOKAHEAD_IMAGES; k++) {
 		const uint8_t *p = vm.ch.code + pc;
 		const OpInfo *info = op_info(p[0]);
@@ -450,13 +485,21 @@ static int look_ahead(int steps, uint16_t *ids)
 			pc = rd32(p + 1);                /* salto fijo: se sigue el camino */
 			continue;
 		}
-		if (p[0] == OP_SFX_PLAY)
+		if ((p[0] == OP_SAY || p[0] == OP_SAYX) && near && *near < 0)
+			*near = n;
+		if (p[0] == OP_SFX_PLAY && queue_sfx)
 			audio_preload(rd16(p + 1));
+		if (p[0] == OP_SFX_PLAY && near && *near < 0 && audio_sfx_missing(rd16(p + 1)))
+			near_sfx_missing = 1;
+		if (p[0] == OP_AMBIENT_PLAY && audio_ambient_missing(p[1], rd16(p + 2)))
+			add_image(ids, &n, RES_SOUND | rd16(p + 2));     /* el bucle va a la cache de RAM con las imagenes */
 		if (p[0] == OP_SCENE || p[0] == OP_BACKGROUND)
 			add_image(ids, &n, rd16(p + 1));
+		if (p[0] == OP_SHOW_RANDOM)              /* showCG(): cualquiera de sus imagenes */
+			for (e = 0; e < p[4]; e++)
+				add_image(ids, &n, rd16(p + 2) + e);
 		if (p[0] == OP_SHOW) {
 			const uint8_t *anim = scene_anim(&vm, rd16(p + 7)), *ev;
-			int e;
 
 			add_image(ids, &n, rd16(p + 2));
 			if (anim && anim[0])                 /* cuadros que la animacion muestra despues */
@@ -466,28 +509,29 @@ static int look_ahead(int steps, uint16_t *ids)
 		}
 		pc += 1 + op_size(info);
 	}
+	if (near && *near < 0)
+		*near = n;
 	return n;
 }
 
-/* Mientras se lee una linea se cargan los efectos que vienen, si la musica no suena (si suena, se cargan junto con la
- * proxima escena, en la misma pausa) */
-static void preload_upcoming(void)
+/* Mientras se lee una linea: si lo que se usa antes de la proxima linea no esta en memoria, se empieza a traer ya en
+ * segundo plano (la musica se pausa una linea antes, pero al avanzar el juego no se congela). Si la musica ya esta
+ * en pausa, se aprovecha para traer tambien lo que sigue. */
+static void prefetch_next(void)
 {
-	uint32_t pc = vm.pc;
-	int n;
+	uint16_t ids[LOOKAHEAD_IMAGES];
+	int n, near, i;
 
-	if (!audio_cd_paused())
+	if (skip_mode || res_prefetch_busy())
 		return;
-	for (n = 0; n < 48 && pc < vm.ch.code_size; n++) {
-		const uint8_t *p = vm.ch.code + pc;
-		const OpInfo *info = op_info(p[0]);
-
-		if (!info || p[0] == OP_MENU || p[0] == OP_JUMP || p[0] == OP_JUMP_IF_FALSE || p[0] == OP_CALL ||
-		    p[0] == OP_RETURN || p[0] == OP_LOAD_CHAPTER || p[0] == OP_END)
-			return;
-		if (p[0] == OP_SFX_PLAY)
-			audio_preload(rd16(p + 1));
-		pc += 1 + op_size(info);
+	n = look_ahead(600, ids, &near, 0);
+	for (i = 0; i < near; i++)
+		res_touch(ids[i]);                   /* las que ya estan en VRAM no se desalojan antes de usarse */
+	for (i = 0; i < near && res_have(ids[i]); i++)
+		;
+	if (i < near || near_sfx_missing || audio_cd_paused()) {
+		res_prefetch(ids, n);
+		look_ahead(600, ids, 0, 1);
 	}
 }
 
@@ -970,8 +1014,7 @@ static void start_say(void)
 	int gid = vm.ev_gid;
 
 	say_seen_before = seen_get(gid);
-	if (!skip_mode)
-		preload_upcoming();
+	say_prefetched = 0;
 	text_start(&run, text_string(vm.ev_text));
 	state = ST_SAY;
 }
@@ -981,6 +1024,7 @@ static void run_vm(void)
 	VmEvent ev;
 
 	audio_batch_begin();             /* todas las lecturas de este paso comparten una sola pausa de la musica */
+	res_trace_tag = (uint32_t)vm.chapter << 16;
 	vm.now = (uint32_t)video_frames();
 	ev = vm_run(&vm);
 
@@ -989,7 +1033,10 @@ static void run_vm(void)
 
 		/* lo nuevo se carga antes de reservar la copia de la transicion (que sale del framebuffer, no de las
 		 * texturas): asi la reserva sabe que espacio queda de verdad */
+		int t0 = VSync(-1), cd0 = cd_sync_vblanks + cd_wait_vblanks;
+
 		scene_sync();
+		decode_vblanks += VSync(-1) - t0 - (cd_sync_vblanks + cd_wait_vblanks - cd0);
 		if (ev == VM_EV_TRANSITION) {
 			snap_box = box_level >= BOX_FADE;
 			begin_transition();
@@ -1000,7 +1047,7 @@ static void run_vm(void)
 		if (changed && audio_cd_paused()) {
 			uint16_t ids[LOOKAHEAD_IMAGES];
 
-			res_prefetch(ids, look_ahead(600, ids));
+			res_prefetch(ids, look_ahead(600, ids, 0, 1));
 		}
 	}
 	switch (ev) {
@@ -1746,6 +1793,31 @@ static void draw_extras(void)
 	draw_list(50, items, n, ui_cursor, 0);
 }
 
+/* `renpy.input` (13D): teclado en pantalla. Lo escrito no se usa despues en el guion (como en el original). */
+#define KB_COLS 10
+#define KB_ROWS 6                            /* 5 de teclas y la de acciones */
+#define KB_MAX 36                            /* caracteres: una linea */
+#define KB_X 20
+#define KB_Y 84
+#define KB_W 28
+#define KB_H 18
+
+static const char *const kb_keys[2][KB_ROWS - 1][KB_COLS] = {
+	{ { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" },
+	  { "q", "w", "e", "r", "t", "y", "u", "i", "o", "p" },
+	  { "a", "s", "d", "f", "g", "h", "j", "k", "l", "ñ" },
+	  { "z", "x", "c", "v", "b", "n", "m", ",", ".", "?" },
+	  { "á", "é", "í", "ó", "ú", "¿", "¡", "!", "'", "-" } },
+	{ { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" },
+	  { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P" },
+	  { "A", "S", "D", "F", "G", "H", "J", "K", "L", "Ñ" },
+	  { "Z", "X", "C", "V", "B", "N", "M", ",", ".", "?" },
+	  { "Á", "É", "Í", "Ó", "Ú", "¿", "¡", "!", "'", "-" } },
+};
+static const char *const kb_actions[4] = { "Mayús", "Espacio", "Borrar", "Listo" };
+static char kb_text[KB_MAX * 2 + 1];
+static int kb_len, kb_row, kb_col, kb_upper;
+
 /* `call screen textscroll` (capitulo 4): el chat del telefono, de abajo hacia arriba como en el original */
 static void begin_special(int id)
 {
@@ -1756,7 +1828,98 @@ static void begin_special(int id)
 	} else if (id == 2 && credits_count) {
 		credits_y = SCREEN_H;
 		state = ST_CREDITS;
+	} else if (id == 3) {
+		kb_len = kb_row = kb_col = kb_upper = 0;
+		kb_text[0] = 0;
+		state = ST_INPUT;
 	}
+}
+
+static void kb_type(const char *s)
+{
+	int n = (int)strlen(s), used = (int)strlen(kb_text);
+
+	if (kb_len >= KB_MAX || used + n >= (int)sizeof(kb_text))
+		return;
+	memcpy(kb_text + used, s, n + 1);
+	kb_len++;
+}
+
+static void kb_erase(void)
+{
+	int used = (int)strlen(kb_text);
+
+	if (!kb_len)
+		return;
+	while (used > 0 && (kb_text[used - 1] & 0xC0) == 0x80)   /* bytes de continuacion de UTF-8 */
+		used--;
+	kb_text[used - 1] = 0;
+	kb_len--;
+}
+
+static void update_input(void)
+{
+	if (input_pressed(PAD_UP))
+		kb_row = (kb_row + KB_ROWS - 1) % KB_ROWS;
+	if (input_pressed(PAD_DOWN))
+		kb_row = (kb_row + 1) % KB_ROWS;
+	if (input_pressed(PAD_LEFT))
+		kb_col = (kb_col + KB_COLS - 1) % KB_COLS;
+	if (input_pressed(PAD_RIGHT))
+		kb_col = (kb_col + 1) % KB_COLS;
+	if (input_pressed(PAD_L1))
+		kb_upper = !kb_upper;
+	if (input_pressed(PAD_CIRCLE))
+		kb_erase();
+	if (input_pressed(PAD_START)) {
+		state = ST_RUN;
+		return;
+	}
+	if (!input_pressed(PAD_CROSS))
+		return;
+	if (kb_row < KB_ROWS - 1) {
+		kb_type(kb_keys[kb_upper][kb_row][kb_col]);
+		return;
+	}
+	switch (kb_col * 4 / KB_COLS) {
+	case 0:
+		kb_upper = !kb_upper;
+		break;
+	case 1:
+		kb_type(" ");
+		break;
+	case 2:
+		kb_erase();
+		break;
+	default:
+		state = ST_RUN;
+		break;
+	}
+}
+
+static void kb_key(int x, int y, int w, const char *label, int sel)
+{
+	font_draw(LAYER_TEXT, x + (w - font_width(label)) / 2, y + 2, label, sel ? 255 : 128, sel ? 220 : 128, sel ? 40 : 128);
+	video_rect(LAYER_TEXT, x + 1, y, w - 2, KB_H - 2, sel ? 90 : 40, sel ? 70 : 40, sel ? 10 : 40, 0);
+}
+
+static void draw_input(void)
+{
+	int r, c, action = kb_row == KB_ROWS - 1 ? kb_col * 4 / KB_COLS : -1;
+
+	panel();
+	draw_center(28, "¿Qué escribirás?", 255, 220, 40);
+	font_draw(LAYER_TEXT, 24, 56, kb_text, 128, 128, 128);
+	if ((video_frames() / 20) & 1)
+		video_rect(LAYER_TEXT, 25 + font_width(kb_text), 57, 2, font_line_height() - 2, 255, 220, 40, 0);
+	video_rect(LAYER_TEXT, 16, 52, SCREEN_W - 32, KB_H + 2, 30, 30, 30, 0);
+	for (r = 0; r < KB_ROWS - 1; r++)
+		for (c = 0; c < KB_COLS; c++)
+			kb_key(KB_X + c * KB_W, KB_Y + r * KB_H, KB_W, kb_keys[kb_upper][r][c], r == kb_row && c == kb_col);
+	for (c = 0; c < 4; c++)
+		kb_key(KB_X + c * (KB_W * KB_COLS / 4), KB_Y + (KB_ROWS - 1) * KB_H, KB_W * KB_COLS / 4,
+		       c == 0 && kb_upper ? "MAYÚS" : kb_actions[c], c == action);
+	draw_center(SCREEN_H - 22, "X: tecla   O: borrar   L1: mayúsculas   START: listo", 96, 96, 96);
 }
 
 static void update_scroll(void)
@@ -1840,12 +2003,14 @@ static void finish_game(void)
 
 /* Prueba de recorrido (AUTOTEST con autoplay): avanza solo, sin saltar, para que se cargue todo como al jugar. Las
  * decisiones van rotando para pasar por ramas distintas; al volver al titulo o ante un error pide cerrar el emulador. */
-static int autoplay_started, autoplay_menus;
+static int autoplay_started, autoplay_menus, autoplay_wait;
 
 static void autoplay_step(void)
 {
 	switch (state) {
 	case ST_SAY:
+		if (res_prefetch_busy() || audio_loading() || !say_prefetched)
+			break;                   /* como un jugador: lee la linea mientras la precarga sigue */
 		text_reveal_page(&run);
 		if (run.at_page_end) {
 			text_next_page(&run);
@@ -1855,15 +2020,35 @@ static void autoplay_step(void)
 		}
 		autoplay_started = 1;
 		break;
+	/* pausas y transiciones: corren su tiempo solo si hay una carga en segundo plano (como al jugar) */
 	case ST_PAUSE:
-		state = ST_RUN;
+		if (!res_prefetch_busy() && !audio_loading())
+			state = ST_RUN;
 		break;
 	case ST_MENU:
 		vm.choice = menu_order[autoplay_menus++ % vm.menu_n];
 		state = ST_RUN;
 		break;
 	case ST_TRANS:
-		end_transition();
+		if (!res_prefetch_busy() && !audio_loading())
+			end_transition();
+		break;
+	case ST_INPUT:
+		/* escribe un texto de ejemplo y lo deja un segundo en pantalla (para las capturas de prueba) */
+		if (!kb_len) {
+			const char *s = "Gracias por todo, Fang";
+
+			for (; *s; s++) {
+				char c[2] = { *s, 0 };
+
+				kb_type(c);
+			}
+			kb_row = KB_ROWS - 1;
+			kb_col = KB_COLS - 1;
+			autoplay_wait = 0;
+		}
+		if (++autoplay_wait >= 60)
+			state = ST_RUN;
 		break;
 	case ST_SCROLL:
 	case ST_CREDITS:
@@ -1913,6 +2098,10 @@ static void update_say(void)
 	int advance = (input_pressed(PAD_CROSS) && !eat_cross) ||
 	              (text_page_done(&run) && run.auto_next && text_finished(&run));
 
+	if (!say_prefetched && !res_prefetch_busy()) {
+		say_prefetched = 1;                  /* una vez por linea, cuando el CD quedo libre */
+		prefetch_next();
+	}
 	if (show_box && box_level < BOX_FADE)
 		return;                          /* como en Ren'Py, el texto empieza cuando la caja termino de aparecer */
 	if (advance) {
@@ -1952,7 +2141,7 @@ static void draw_debug(int fps)
 int main(int argc, const char *argv[])
 {
 	static const VmHost host = { 0, chapter_loader, notify };
-	int vb_start, frames_window = 0, fps = 0;
+	int vb_start, last_vb, frames_window = 0, fps = 0;
 
 	video_init();
 	cd_init();
@@ -2011,7 +2200,7 @@ int main(int argc, const char *argv[])
 		}
 	}
 	go_title();
-	vb_start = VSync(-1);
+	vb_start = last_vb = VSync(-1);
 
 	for (;;) {
 		int vb, in_game;
@@ -2111,6 +2300,9 @@ int main(int argc, const char *argv[])
 		case ST_CREDITS:
 			update_credits();
 			break;
+		case ST_INPUT:
+			update_input();
+			break;
 		default:
 			break;
 		}
@@ -2178,12 +2370,18 @@ int main(int argc, const char *argv[])
 		case ST_CREDITS:
 			draw_credits();
 			break;
+		case ST_INPUT:
+			draw_input();
+			break;
 		default:
 			break;
 		}
 		video_unclip();
 
 		vb = VSync(-1);
+		if (in_game && vb - last_vb > STALL_VBLANKS)
+			log_stall(vb - last_vb);
+		last_vb = vb;
 		frames_window++;
 		if (vb - vb_start >= 60) {
 			fps = (frames_window * 60) / (vb - vb_start);

@@ -93,7 +93,7 @@ Formato: `opcode u8` seguido de los argumentos. Tamaños en bytes entre parénte
 | Op | Nombre | Argumentos | Ren'Py |
 |---|---|---|---|
 | 0x30 | `PAUSE` | cuadros u16, flags u8 (4) | `pause N`, `renpy.pause`; bit0 saltable con un botón (Ren'Py lo permite en pausas con tiempo) |
-| 0x31 | `SPECIAL` | id u8 (2) | 1 = pantalla de texto desplazable (`call screen textscroll`, capítulo 4); 2 = créditos (`label lending`) |
+| 0x31 | `SPECIAL` | id u8 (2) | 1 = pantalla de texto desplazable (`call screen textscroll`, capítulo 4); 2 = créditos (`label lending`); 3 = teclado en pantalla (`renpy.input`, 13D; lo escrito no se guarda) |
 
 ### Control de flujo
 | Op | Nombre | Argumentos | Ren'Py |
@@ -225,6 +225,7 @@ Si un recurso no está residente al usarse (error del compilador), el motor lo c
 | `renpy.quit()` (final Shooter) | `END` + el motor vuelve al título |
 | `call screen textscroll` (1) | `SPECIAL 1` |
 | `label lending` / créditos | `SPECIAL 2` |
+| `renpy.input` (1, 13D) | `SPECIAL 3` |
 | `define`/`default` (256) | resueltos por el compilador (variables a índices, constantes en tablas) |
 | `image` (431), `layeredimage` (2) | `IMG/index.bin` (las expresiones y capas se pre-componen en la PC) |
 | `transform` (42), ATL en `show` (2,957) | posiciones (`positions.bin`) y tabla ANIM |

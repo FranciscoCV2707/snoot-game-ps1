@@ -16,7 +16,7 @@ MUSIC_CHANNELS = {"music": 0, "music1": 0, "music2": 0}
 AMBIENT_SLOTS = {"ambient": 0, "ambient1": 1, "ambient2": 2, "ambient3": 3}
 SFX_CHANNELS = {"sound", "audio"}
 VOLUME_CHANNELS = {"music": 0, "ambient": 1, "ambient1": 2, "ambient2": 3, "ambient3": 4, "sound": 5, "audio": 5}
-SPECIAL_TEXTSCROLL, SPECIAL_CREDITS = 1, 2
+SPECIAL_TEXTSCROLL, SPECIAL_CREDITS, SPECIAL_INPUT = 1, 2, 3
 TEXTSCROLL_SCALE = 0.4      # tamano del chat en la PS1 respecto al original (legible en 320 px)
 SHOW_RANDOM_FIRST = ("text1",)
 SCENE_FLIP = 0x8000            # bit alto del anim de SCENE: fondo espejado (`scene moes pizza mirrored`)
@@ -1003,8 +1003,12 @@ class Lowerer:
 
     def py_call(self, call, node):
         name = ast.unparse(call.func)
-        if name in ("webbrowser.open", "renpy.input"):
+        if name == "webbrowser.open":
             self.warn(node, f"{name} ignorada (funcion de PC)")
+            return
+        if name == "renpy.input":
+            # teclado en pantalla; lo escrito no se usa en el guion
+            self.emit("SPECIAL", node.line, id=SPECIAL_INPUT)
             return
         args = [self.const(a) for a in call.args]
         kwargs = {k.arg: self.const(k.value) for k in call.keywords}
@@ -1048,8 +1052,6 @@ class Lowerer:
                 self.ir.insts.extend(get_ending_insts(self.reg, f".ending{self.counter}", node.line, self.ch.name))
         elif name in ("ending_image", "toggle_debug"):
             self.warn(node, f"{name}() lo cubre el motor (progreso de finales)")
-        elif name in ("webbrowser.open", "renpy.input"):
-            self.warn(node, f"{name} ignorada (funcion de PC)")
         else:
             raise CompileError(f"{node.file}:{node.line}: llamada sin soporte: {ast.unparse(call)[:80]}")
 

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include "audio.h"
 #include "cd.h"
 #include "img.h"
 #include "res.h"
@@ -31,6 +32,8 @@ static uint16_t clut_used;
 static uint32_t clock_now = 1, draw_clock = 2;
 volatile uint32_t res_fail_read, res_fail_vram, res_fail_clut;   /* contadores para la prueba automatica */
 volatile uint32_t res_snap_skip;                                  /* transiciones sin copia por falta de VRAM */
+volatile uint32_t res_cd_reads, res_cd_bytes;                     /* imagenes leidas del CD al momento (sin precarga) */
+volatile uint32_t res_sync_log[16], res_trace_tag;                /* ultimas leidas al momento (+0x8000: sonidos; capitulo << 16) */
 volatile uint32_t res_fail_log[16];                               /* ultimas imagenes que no cupieron (+0x10000: paletas) */
 static int failed[16], failed_count;      /* imagenes que no se pudieron cargar en esta escena */
 
@@ -86,9 +89,12 @@ static void free_entry(Entry *e)
 	e->used = 0;
 }
 
+static void prefetch_poll(void);
+
 void res_tick(void)
 {
 	draw_clock++;
+	prefetch_poll();
 }
 
 /* Desaloja la entrada menos usada que no pertenece a la escena actual. Con for_draw tambien puede desalojar una de
@@ -148,11 +154,23 @@ static const Image *load_image(int image_id, int for_draw);
 #define MAX_PREFETCH 32
 #define MAX_GAP_SECTORS 4                /* se leen de paso huecos chicos entre archivos para no hacer otra busqueda */
 
+#define SPAN_SECTORS 64                  /* tramo maximo por lectura (~0.4 s): lo que se espera si hace falta el CD */
+
 static uint8_t cache_buf[CACHE_BYTES] __attribute__((aligned(4)));
-static struct {
+typedef struct {
 	int id, off, size;
-} cached[MAX_CACHED];
+} CacheEntry;
+static CacheEntry cached[MAX_CACHED];
 static int cached_count, cache_used;
+
+typedef struct {
+	int first, sectors, off, from, to;       /* sectores, lugar en la cache y archivos del plan [from, to) */
+} Span;
+static Span spans[MAX_PREFETCH];
+static int span_count, span_next, span_reading;   /* tramos del plan, ya empezados y si el ultimo se esta leyendo */
+static int plan_id[MAX_PREFETCH], plan_off[MAX_PREFETCH], plan_size[MAX_PREFETCH], plan_count;
+
+static void prefetch_stop(int unread_span);
 
 static const uint8_t *cache_lookup(int image_id, int *size)
 {
@@ -166,45 +184,53 @@ static const uint8_t *cache_lookup(int image_id, int *size)
 	return 0;
 }
 
-static int in_list(int id, const uint16_t *ids, int n)
-{
-	int i;
-
-	for (i = 0; i < n; i++)
-		if (ids[i] == id)
-			return 1;
-	return 0;
-}
-
 void res_prefetch(const uint16_t *ids, int n)
 {
-	int want[MAX_PREFETCH], lba[MAX_PREFETCH], size[MAX_PREFETCH], count = 0, i, j, kept = 0, used = 0;
+	static CacheEntry kept[MAX_CACHED];
+	int want[MAX_PREFETCH], lba[MAX_PREFETCH], size[MAX_PREFETCH], keep[MAX_CACHED];
+	int count = 0, keep_count = 0, i, j, used = 0, budget = 0;
 	char path[24];
 
-	/* 1. se quedan (compactadas al inicio) las que se van a seguir necesitando */
-	for (i = 0; i < cached_count; i++)
-		if (in_list(cached[i].id, ids, n)) {
-			int bytes = (cached[i].size + 2047) & ~2047;
-
-			if (cached[i].off != used)
-				memmove(cache_buf + used, cache_buf + cached[i].off, bytes);
-			cached[kept] = cached[i];
-			cached[kept].off = used;
-			used += bytes;
-			kept++;
+	/* 0. si quedaba una precarga a medias: se termina el tramo en curso y se descarta el resto */
+	if (span_count) {
+		if (span_next < span_count)
+			cache_used = spans[span_next].off;
+		if (span_reading) {
+			cd_wait();
+			span_count = span_next;
+			prefetch_poll();                         /* pasa el tramo a la cache y termina */
+		} else {
+			prefetch_stop(span_count);
 		}
-	cached_count = kept;
-	cache_used = used;
+	}
 
-	/* 2. las que faltan (ni en VRAM ni aqui), ordenadas por posicion en el disco */
+	/* 1. en orden del guion, mientras quepan: las que ya estan en la cache se quedan y las que faltan (ni en VRAM ni
+	 * aqui) se planean, ordenadas por posicion en el disco. Lo que no entra se usa mas tarde: otra precarga lo trae. */
 	for (i = 0; i < n && count < MAX_PREFETCH; i++) {
-		int l, s;
+		int l = 0, s = 0, c, bytes;
 
-		if (res_peek(ids[i]) || cache_lookup(ids[i], &s))
+		if (!(ids[i] & RES_SOUND) && res_peek(ids[i]))
 			continue;
-		sprintf(path, "\\DATA\\I%04d.IMG", ids[i]);
-		if (cd_find(path, &l, &s) != 0)
+		for (c = 0; c < cached_count && cached[c].id != ids[i]; c++)
+			;
+		if (c < cached_count) {
+			bytes = (cached[c].size + 2047) & ~2047;
+		} else {
+			if (ids[i] & RES_SOUND)
+				sprintf(path, "\\DATA\\S%03d.SPU", ids[i] & ~RES_SOUND);
+			else
+				sprintf(path, "\\DATA\\I%04d.IMG", ids[i]);
+			if (cd_find(path, &l, &s) != 0)
+				continue;
+			bytes = (s + 2047) & ~2047;
+		}
+		if (budget + bytes > CACHE_BYTES || keep_count + count >= MAX_CACHED)
+			break;
+		budget += bytes;
+		if (c < cached_count) {
+			keep[keep_count++] = c;
 			continue;
+		}
 		for (j = count; j > 0 && lba[j - 1] > l; j--) {
 			want[j] = want[j - 1];
 			lba[j] = lba[j - 1];
@@ -216,27 +242,145 @@ void res_prefetch(const uint16_t *ids, int n)
 		count++;
 	}
 
-	/* 3. tramos contiguos de una sola lectura, mientras quepan */
+	/* 2. las que se quedan se compactan al inicio (en orden de memoria, para no pisarse) */
+	for (i = 1; i < keep_count; i++)
+		for (j = i; j > 0 && cached[keep[j - 1]].off > cached[keep[j]].off; j--) {
+			int t = keep[j];
+
+			keep[j] = keep[j - 1];
+			keep[j - 1] = t;
+		}
+	for (i = 0; i < keep_count; i++) {
+		int bytes = (cached[keep[i]].size + 2047) & ~2047;
+
+		if (cached[keep[i]].off != used)
+			memmove(cache_buf + used, cache_buf + cached[keep[i]].off, bytes);
+		kept[i] = cached[keep[i]];
+		kept[i].off = used;
+		used += bytes;
+	}
+	memcpy(cached, kept, keep_count * sizeof(CacheEntry));
+	cached_count = keep_count;
+	cache_used = used;
+
+	/* 3. tramos contiguos de una sola lectura, mientras quepan; se reserva su lugar en la cache */
+	span_count = span_next = 0;
 	for (i = 0; i < count;) {
 		int first = lba[i], end = lba[i] + (size[i] + 2047) / 2048, k = i + 1, sectors;
 
 		while (k < count && lba[k] >= end && lba[k] - end <= MAX_GAP_SECTORS &&
+		       lba[k] + (size[k] + 2047) / 2048 - first <= SPAN_SECTORS &&
 		       (lba[k] + (size[k] + 2047) / 2048 - first) * 2048 <= CACHE_BYTES - cache_used)
 			end = lba[k] + (size[k] + 2047) / 2048, k++;
 		sectors = end - first;
-		if (sectors * 2048 > CACHE_BYTES - cache_used || cached_count + (k - i) > MAX_CACHED)
+		if (sectors * 2048 > CACHE_BYTES - cache_used || cached_count + k > MAX_CACHED)
 			break;
-		if (cd_read_sectors(first, sectors, cache_buf + cache_used) != 0)
-			break;
+		spans[span_count].first = first;
+		spans[span_count].sectors = sectors;
+		spans[span_count].off = cache_used;
+		spans[span_count].from = i;
+		spans[span_count].to = k;
+		span_count++;
 		for (j = i; j < k; j++) {
-			cached[cached_count].id = want[j];
-			cached[cached_count].off = cache_used + (lba[j] - first) * 2048;
-			cached[cached_count].size = size[j];
-			cached_count++;
+			plan_id[j] = want[j];
+			plan_off[j] = cache_used + (lba[j] - first) * 2048;
+			plan_size[j] = size[j];
 		}
 		cache_used += sectors * 2048;
 		i = k;
 	}
+	plan_count = span_count ? spans[span_count - 1].to : 0;
+
+	/* 4. se leen en segundo plano (res_tick): la musica sigue en pausa hasta que terminen */
+	if (span_count) {
+		audio_cd_begin();
+		prefetch_poll();
+	}
+}
+
+/* Precarga en segundo plano: los tramos se leen de a uno (cuando el CD esta libre); al terminar cada uno sus
+ * archivos pasan a la cache */
+static void prefetch_stop(int unread_span)
+{
+	if (unread_span < span_count)
+		cache_used = spans[unread_span].off;    /* se libera lo reservado para los tramos que no se leyeron */
+	span_count = span_next = span_reading = 0;
+	audio_cd_end();
+}
+
+static void prefetch_poll(void)
+{
+	int r, j;
+
+	if (!span_count)
+		return;
+	if (span_reading) {
+		const Span *s = &spans[span_next - 1];
+
+		r = cd_read_poll(CD_OWNER_RES);
+		if (r > 0)
+			return;
+		span_reading = 0;
+		if (r < 0) {
+			prefetch_stop(span_next - 1);
+			return;
+		}
+		for (j = s->from; j < s->to; j++) {
+			cached[cached_count].id = plan_id[j];
+			cached[cached_count].off = plan_off[j];
+			cached[cached_count].size = plan_size[j];
+			cached_count++;
+		}
+	}
+	/* si mientras tanto empezo otra cancion, no se le vuelve a cortar */
+	if (span_next == span_count || !audio_cd_paused()) {
+		prefetch_stop(span_next);
+		return;
+	}
+	if (cd_busy())
+		return;                                  /* el audio esta leyendo: se sigue en otro cuadro */
+	if (cd_read_start(CD_OWNER_RES, spans[span_next].first, spans[span_next].sectors, cache_buf + spans[span_next].off) != 0) {
+		prefetch_stop(span_next);
+		return;
+	}
+	span_next++;
+	span_reading = 1;
+}
+
+/* Termina ya (esperando al CD) la precarga hasta tener `image_id`, o toda si es -1 */
+static void prefetch_wait(int image_id)
+{
+	int j;
+
+	while (span_count) {
+		if (image_id >= 0) {
+			for (j = span_reading ? spans[span_next - 1].from : span_next < span_count ? spans[span_next].from : plan_count;
+			     j < plan_count && plan_id[j] != image_id; j++)
+				;
+			if (j == plan_count)
+				return;                          /* no esta pendiente */
+		}
+		cd_wait();
+		prefetch_poll();
+	}
+}
+
+int res_prefetch_busy(void)
+{
+	return span_count != 0;
+}
+
+int res_have(int id)
+{
+	int size;
+
+	return (!(id & RES_SOUND) && res_peek(id)) || cache_lookup(id, &size);
+}
+
+const uint8_t *res_cached_file(int id, int *size)
+{
+	prefetch_wait(id);
+	return cache_lookup(id, size);
 }
 
 #define SNAP_GY 16                      /* copia de pantalla (320 x 192 filas en la zona de fondos): lugar preferido */
@@ -430,10 +574,14 @@ static const Image *load_image(int image_id, int for_draw)
 		}
 	sprintf(path, "\\DATA\\I%04d.IMG", image_id);
 
+	prefetch_wait(image_id);                      /* si se esta precargando, se espera a que llegue */
 	data = cache_lookup(image_id, &size);         /* ya leida de antemano: sin tocar el CD */
 	if (!data) {
 		size = cd_read_file(path, file_buf, FILE_BYTES);
 		data = file_buf;
+		res_sync_log[res_cd_reads & 15] = (uint32_t)image_id | res_trace_tag;
+		res_cd_reads++;
+		res_cd_bytes += size > 0 ? size : 0;
 	}
 	if (size < 24 + 512 + 8) {
 		res_fail_read++;

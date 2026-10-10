@@ -41,6 +41,16 @@ int cd_read_file(const char *path, void *buf, int buf_bytes)
 	return n;
 }
 
+/* la precarga (res_prefetch) no se usa aqui */
+int cd_find(const char *path, int *lba, int *size) { (void)path; (void)lba; (void)size; return -1; }
+int cd_read_start(int owner, int lba, int sectors, void *buf) { (void)owner; (void)lba; (void)sectors; (void)buf; return -1; }
+int cd_read_poll(int owner) { (void)owner; return 0; }
+int cd_busy(void) { return 0; }
+void cd_wait(void) {}
+void audio_cd_begin(void) {}
+void audio_cd_end(void) {}
+int audio_cd_paused(void) { return 1; }
+
 int img_load(Image *img, const uint8_t *file, int sz, int vx, int vy, int cy)
 {
 	(void)sz;

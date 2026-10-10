@@ -32,7 +32,9 @@ BUTTONS = {"SELECT": 1 << 0, "START": 1 << 3, "UP": 1 << 4, "RIGHT": 1 << 5, "DO
            "L2": 1 << 8, "R2": 1 << 9, "L1": 1 << 10, "R1": 1 << 11, "TRIANGLE": 1 << 12, "CIRCLE": 1 << 13,
            "CROSS": 1 << 14, "SQUARE": 1 << 15}
 SHOT, QUIT, AUTOPLAY = 0xFFFF, 0xFFFE, 0xFFFD
-WATCH = ("frames", "res_fail_read", "res_fail_vram", "res_fail_clut", "res_snap_skip")   # variables del motor que se anotan en cada captura
+WATCH = ("frames", "res_fail_read", "res_fail_vram", "res_fail_clut", "res_snap_skip", "stall_count", "stall_max",
+         "stall_total", "cd_sync_count", "cd_sync_vblanks", "cd_sync_sectors", "cd_wait_vblanks", "res_cd_reads",
+         "res_cd_bytes", "audio_cd_uploads", "audio_cd_bytes", "decode_vblanks")   # variables del motor que se anotan en cada captura
 
 LUA = """
 local ffi = require('ffi')
@@ -42,31 +44,48 @@ local mem = PCSX.getMemPtr()
 local shot_addr, quit_addr, state_addr, vm_addr = %(shot)d, %(quit)d, %(state)d, %(vm)d
 local watch = {%(watch)s}
 local failog = %(failog)s
+local stalllog = %(stalllog)s
+local synclog = %(synclog)s
+local triggers = {%(triggers)s}
 local function u32(addr) return ffi.cast('uint32_t*', mem + addr)[0] end
 local seen, log_text, frames = 0, '', 0
+local function take(name)
+  local shot = PCSX.GPU.takeScreenShot()
+  local f = Support.File.open(outdir .. '/' .. name .. '.raw', 'TRUNCATE')
+  f:writeMoveSlice(shot.data)
+  f:close()
+  log_text = log_text .. name .. ' ' .. shot.width .. ' ' .. shot.height .. ' state=' .. tostring(u32(state_addr)) ..
+    ' cap=' .. tostring(u32(vm_addr + 24)) .. ' pc=' .. tostring(u32(vm_addr + 28))
+  for k, a in pairs(watch) do log_text = log_text .. ' ' .. k .. '=' .. tostring(u32(a)) end
+  log_text = log_text .. ';'
+  local log = Support.File.open(outdir .. '/shots.txt', 'TRUNCATE')
+  log:write(log_text)
+  log:close()
+end
 EMUTEST_LISTENER = PCSX.Events.createEventListener('GPU::Vsync', function()
   frames = frames + 1
   local n = ffi.cast('uint32_t*', mem + shot_addr)[0]
   while seen < n do
     seen = seen + 1
-    local name = names[seen] or ('shot' .. seen)
-    local shot = PCSX.GPU.takeScreenShot()
-    local f = Support.File.open(outdir .. '/' .. name .. '.raw', 'TRUNCATE')
-    f:writeMoveSlice(shot.data)
-    f:close()
-    log_text = log_text .. name .. ' ' .. shot.width .. ' ' .. shot.height .. ' state=' .. tostring(u32(state_addr)) ..
-      ' cap=' .. tostring(u32(vm_addr + 24)) .. ' pc=' .. tostring(u32(vm_addr + 28))
-    for k, a in pairs(watch) do log_text = log_text .. ' ' .. k .. '=' .. tostring(u32(a)) end
-    log_text = log_text .. ';'
-    local log = Support.File.open(outdir .. '/shots.txt', 'TRUNCATE')
-    log:write(log_text)
-    log:close()
+    take(names[seen] or ('shot' .. seen))
+  end
+  for _, t in ipairs(triggers) do
+    if not t.at and ((t.state and u32(state_addr) == t.state) or
+                     (t.cap and u32(vm_addr + 24) == t.cap and u32(vm_addr + 28) >= t.pc)) then
+      t.at = frames + t.delay
+    end
+    if t.at and not t.done and frames >= t.at then
+      t.done = true
+      take(t.name)
+    end
   end
   if ffi.cast('uint32_t*', mem + quit_addr)[0] ~= 0 or frames > %(max_frames)d then
     local fin = 'END frames=' .. frames .. ' state=' .. tostring(u32(state_addr)) .. ' cap=' .. tostring(u32(vm_addr + 24)) ..
       ' pc=' .. tostring(u32(vm_addr + 28))
     for k, a in pairs(watch) do fin = fin .. ' ' .. k .. '=' .. tostring(u32(a)) end
     if failog then fin = fin .. ' fallas='; for j = 0, 15 do fin = fin .. tostring(u32(failog + 4 * j)) .. ',' end end
+    if stalllog then fin = fin .. ' congelones='; for j = 0, 31 do fin = fin .. tostring(u32(stalllog + 4 * j)) .. ',' end end
+    if synclog then fin = fin .. ' al_momento='; for j = 0, 15 do fin = fin .. tostring(u32(synclog + 4 * j)) .. ',' end end
     local f = Support.File.open(outdir .. '/final.txt', 'TRUNCATE')
     f:write(fin)
     f:close()
@@ -129,7 +148,23 @@ def to_png(raw, width, height):
     return png
 
 
-def run(steps, out, keep_card=False, timeout=900, max_frames=None):
+def parse_triggers(text):
+    """Capturas por estado del motor o por posicion en el guion: "state=NUM:NOMBRE[:CUADROS]" o
+    "pc=CAP,PC:NOMBRE[:CUADROS]" (la captura se toma CUADROS despues de cumplirse la condicion)."""
+    out = []
+    for part in filter(None, (p.strip() for p in (text or "").split(";"))):
+        cond, name, *rest = part.split(":")
+        delay = int(rest[0]) if rest else 0
+        kind, value = cond.split("=")
+        if kind == "state":
+            out.append(f"{{state = {int(value)}, name = '{name}', delay = {delay}}}")
+        else:
+            cap, pc = value.split(",")
+            out.append(f"{{cap = {int(cap)}, pc = {int(pc)}, name = '{name}', delay = {delay}}}")
+    return ", ".join(out)
+
+
+def run(steps, out, keep_card=False, timeout=900, max_frames=None, triggers=None):
     out = out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     for old in list(out.glob("*.png")) + list(out.glob("*.raw")) + [out / "shots.txt", out / "final.txt"]:
@@ -147,6 +182,9 @@ def run(steps, out, keep_card=False, timeout=900, max_frames=None):
                              "state": sym["state"], "vm": sym["vm"],
                              "watch": ", ".join(f"{n} = {sym[n]}" for n in WATCH if n in sym),
                              "failog": sym.get("res_fail_log", "nil"),
+                             "stalllog": sym.get("stall_log", "nil"),
+                             "synclog": sym.get("res_sync_log", "nil"),
+                             "triggers": parse_triggers(triggers),
                              "max_frames": max_frames or last + 3000}, encoding="utf-8")
     args = [str(REDUX), "-no-ui", "-run", "-fastboot", "-bios", str(BIOS), "-iso", str(CUE),
             "-memcard1", str(out / "card1.mcd"), "-exec", f"dofile('{script.as_posix()}')"]
@@ -185,8 +223,9 @@ def main():
     ap.add_argument("--keep-card", action="store_true")
     ap.add_argument("--timeout", type=int, default=900)
     ap.add_argument("--max-frames", type=int, help="cierra el emulador despues de estos cuadros (por defecto el ultimo paso + 3000)")
+    ap.add_argument("--triggers", help='capturas por estado o posicion: "state=18:teclado:30; pc=0,1850:insultos:40"')
     args = ap.parse_args()
-    shots = run(parse_steps(args.steps), args.out, args.keep_card, args.timeout, args.max_frames)
+    shots = run(parse_steps(args.steps), args.out, args.keep_card, args.timeout, args.max_frames, args.triggers)
     final = args.out.resolve() / "final.txt"
     if final.exists():
         print(final.read_text(encoding="utf-8"))

@@ -1,5 +1,14 @@
 # Bitácora
 
+## 2026-10-10 - Congelones, insultos legibles y teclado (tras tu prueba)
+Hecho:
+- Medición: el motor anota los cuadros de mas de 0.1 s y el playtest los lista con la linea del guion. Historia completa al empezar: 316 congelones, el peor de 4.25 s y 156 s en total; casi todo eran lecturas del CD hechas en el momento (imagenes, y sobre todo efectos y ambientes: 3 MB solo en los capitulos 1 a 3).
+- Precarga en segundo plano: imagenes, ambientes (a la cache de RAM) y efectos (cola que sube a la SPU) se leen con `CdRead` sin detener el juego. Mientras se lee una linea se revisa lo que se usa antes de la siguiente; si falta algo se empieza a traer ya (la pausa de la musica ocurre una linea antes, pero sin congelar). La precarga elige en orden del guion; una cancion que empieza durante una carga arranca al terminarla en vez de cortarse; un ambiente se precarga si no esta en su espacio de la SPU.
+- El motor se compilaba en Debug (`-Og`): ahora Release (`-O2`); descomprimir y subir a VRAM tarda menos de la mitad y el ejecutable bajo de 112 a 92 KB.
+- Resultado (historia completa): 131 congelones, el peor de 1.05 s y 37 s en total; los que quedan son casi todos el inicio de cada capitulo.
+- Insultos del concierto (`showCG`, capitulo 1): se redibujan desde la imagen original como texto nitido con contorno negro de 1 px (la sombra difusa se volvia una franja tramada ilegible) y a lo sumo 300 px de ancho (el mas largo se salia de la pantalla). Sus 9 imagenes entran en la precarga.
+- `renpy.input` (13D, "¿Qué escribirás?"): teclado en pantalla (`SPECIAL 3`).
+
 ## 2026-10-10 - Cargas agrupadas (D7)
 Hecho:
 - Tabla de sectores `FILES.BIN` en el disco; `cd_find` ya no lee el directorio del CD en cada carga.

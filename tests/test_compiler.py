@@ -121,3 +121,5 @@ def test_full_compile_and_exploration(tmp_path):
     assert cov.labels >= {n for n in program.meta["labels"].values()}
     assert cov.bonus == set(range(9))
     assert len(cov.text_ids) >= program.meta["text_total"] - 6
+    inputs = [a for ch in program.chapters.values() for _, name, a in ch.walk() if name == "SPECIAL" and a["id"] == 3]
+    assert len(inputs) == 1                  # renpy.input de 13D: teclado en pantalla
