@@ -17,6 +17,7 @@ AMBIENT_SLOTS = {"ambient": 0, "ambient1": 1, "ambient2": 2, "ambient3": 3}
 SFX_CHANNELS = {"sound", "audio"}
 VOLUME_CHANNELS = {"music": 0, "ambient": 1, "ambient1": 2, "ambient2": 3, "ambient3": 4, "sound": 5, "audio": 5}
 SPECIAL_TEXTSCROLL, SPECIAL_CREDITS = 1, 2
+TEXTSCROLL_SCALE = 0.4      # tamano del chat en la PS1 respecto al original (legible en 320 px)
 SHOW_RANDOM_FIRST = ("text1",)
 SCENE_FLIP = 0x8000            # bit alto del anim de SCENE: fondo espejado (`scene moes pizza mirrored`)
 NUM = r"\s*(-?[\d.]+)\s*"
@@ -109,6 +110,29 @@ class Registry:
         if name not in self.images[iid]["names"]:
             self.images[iid]["names"].append(name)
         return iid, flip
+
+    def textscroll_pages(self):
+        """Chat de `call screen textscroll` (capitulo 4): la imagen larga `texts` en tiras de pantalla completa,
+        legibles (0.4x del original) sobre fondo blanco. Devuelve los ids consecutivos de las tiras."""
+        from PIL import Image
+        from tools.images.render import find_file
+        with Image.open(find_file("images/other/texts.webp")) as im:
+            width, height = im.size
+        rows = int(180 / TEXTSCROLL_SCALE)                       # filas del original por tira de 180 lineas de PS1
+        zoom = atl_module.SCREEN_W / width                        # al tamano de 1920 que el convertidor reduce 6x
+        ids = []
+        for k in range((height + rows - 1) // rows):
+            recipe = {"op": "effect", "effect": "Transform", "args": [], "kwargs": {"zoom": zoom}, "src": {
+                "op": "composite", "size": [width, rows], "layers": [
+                    {"pos": [0, 0], "src": {"op": "solid", "color": "#fff"}},
+                    {"pos": [0, -k * rows], "src": {"op": "file", "path": "images/other/texts.webp"}}]}}
+            sig = repr(recipe)
+            if sig not in self._image_ids:
+                self._image_ids[sig] = len(self.images)
+                self.images.append({"recipe": recipe, "names": [f"ui textscroll {k}"]})
+            ids.append(self._image_ids[sig])
+            self.mark_full(ids[-1])
+        return ids
 
     def camera_shot(self, layers, camera):
         """Imagen nueva con la escena vista por la camara: pantalla = zoom * punto - (x, y), en pixeles de 1920x1080."""
@@ -366,6 +390,7 @@ class Lowerer:
 
     def n_CallScreen(self, n, state):
         if n.name == "textscroll":
+            self.reg.textscroll_pages()
             self.emit("SPECIAL", n.line, id=SPECIAL_TEXTSCROLL)
         else:
             self.warn(n, f"call screen {n.name} ignorada")

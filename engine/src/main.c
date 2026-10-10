@@ -44,7 +44,7 @@ typedef struct {
 
 typedef enum {
 	ST_RUN, ST_SAY, ST_MENU, ST_PAUSE, ST_END, ST_ERROR, ST_DEV, ST_TRANS,
-	ST_TITLE, ST_PMENU, ST_SLOTS, ST_OPTIONS, ST_GALLERY, ST_EXTRAS, ST_CONFIRM, ST_NOTICE
+	ST_TITLE, ST_PMENU, ST_SLOTS, ST_OPTIONS, ST_GALLERY, ST_EXTRAS, ST_CONFIRM, ST_NOTICE, ST_SCROLL, ST_CREDITS
 } State;
 
 static uint8_t file_buf[16 * 1024] __attribute__((aligned(4)));
@@ -88,6 +88,12 @@ static int extra_count;
 static uint16_t extra_chapter[MAX_EXTRAS];
 static uint32_t extra_offset[MAX_EXTRAS];
 static char extra_name[MAX_EXTRAS][42];
+static int scroll_first, scroll_count, scroll_pos;     /* chat del capitulo 4: tiras de 320x180 */
+#define MAX_CREDITS 128
+static int credits_count, credits_y;
+static uint8_t credits_style[MAX_CREDITS];
+static uint16_t credits_off[MAX_CREDITS];
+static char credits_text[4096];
 
 /* Partida y progreso */
 static int music_level = 10, sfx_level = 10;
@@ -237,6 +243,27 @@ static void load_game_tables(void)
 			extra_count = i + 1;
 		}
 		p += 7 + p[6];
+	}
+	scroll_first = rd16(p);
+	scroll_count = p[2];
+	n = rd16(p + 3);
+	p += 5;
+	{
+		int used = 0;
+
+		for (i = 0; i < n; i++) {
+			int len = p[1];
+
+			if (i < MAX_CREDITS && used + len + 1 <= (int)sizeof(credits_text)) {
+				credits_style[i] = p[0];
+				credits_off[i] = (uint16_t)used;
+				memcpy(credits_text + used, p + 2, len);
+				credits_text[used + len] = 0;
+				used += len + 1;
+				credits_count = i + 1;
+			}
+			p += 2 + len;
+		}
 	}
 }
 
@@ -789,6 +816,8 @@ static void draw_menu(void)
 }
 
 /* ---------------------------------------------------------------- flujo */
+static void begin_special(int id);
+
 static void start_say(void)
 {
 	int gid = vm.ev_gid;
@@ -821,6 +850,9 @@ static void run_vm(void)
 	case VM_EV_PAUSE:
 		pause_left = vm.ev_frames;
 		state = ST_PAUSE;
+		break;
+	case VM_EV_SPECIAL:
+		begin_special(vm.ev_args[0]);
 		break;
 	case VM_EV_END:
 		state = ST_END;
@@ -1537,6 +1569,73 @@ static void draw_extras(void)
 	draw_list(50, items, n, ui_cursor, 0);
 }
 
+/* `call screen textscroll` (capitulo 4): el chat del telefono, de abajo hacia arriba como en el original */
+static void begin_special(int id)
+{
+	skip_mode = 0;                       /* como en Ren'Py: una pantalla interactiva detiene el salto */
+	if (id == 1 && scroll_count) {
+		scroll_pos = scroll_count * VIEW_H - VIEW_H;
+		state = ST_SCROLL;
+	} else if (id == 2 && credits_count) {
+		credits_y = SCREEN_H;
+		state = ST_CREDITS;
+	}
+}
+
+static void update_scroll(void)
+{
+	int max = scroll_count * VIEW_H - VIEW_H, step = input_down(PAD_R1) ? 8 : 3;
+
+	if (input_down(PAD_UP))
+		scroll_pos = scroll_pos - step < 0 ? 0 : scroll_pos - step;
+	if (input_down(PAD_DOWN))
+		scroll_pos = scroll_pos + step > max ? max : scroll_pos + step;
+	/* como en el original, el boton para salir esta arriba de todo: X sale al llegar al inicio del chat */
+	if (scroll_pos == 0 && input_pressed(PAD_CROSS))
+		state = ST_RUN;
+}
+
+static void draw_scroll(void)
+{
+	int k = scroll_pos / VIEW_H, off = scroll_pos % VIEW_H, i;
+
+	res_new_scene();
+	for (i = 0; i < 2 && k + i < scroll_count; i++) {
+		const Image *img = res_get(scroll_first + k + i);
+
+		if (img && img->kind <= 1)
+			img_draw(img, LAYER_SPRITE0, 0, VIEW_Y + i * VIEW_H - off);
+	}
+	video_clip_scene();
+	font_draw(LAYER_TEXT, 8, SCREEN_H - 24, scroll_pos ? "Arriba/abajo: leer (R1 rapido)" : "X: cerrar el chat",
+	          128, 128, 128);
+}
+
+/* Creditos: suben solos (X los acelera) y al final vuelve el guion */
+static void update_credits(void)
+{
+	int lh = font_line_height() + 4;
+
+	credits_y -= input_down(PAD_CROSS) ? 4 : 1;
+	if (credits_y + credits_count * lh < 0 || input_pressed(PAD_START))
+		state = ST_RUN;
+}
+
+static void draw_credits(void)
+{
+	int lh = font_line_height() + 4, i;
+
+	video_rect(LAYER_BOX, 0, 0, SCREEN_W, SCREEN_H, 0, 0, 0, 0);
+	for (i = 0; i < credits_count; i++) {
+		int y = credits_y + i * lh, st = credits_style[i];
+
+		if (y < -lh || y > SCREEN_H)
+			continue;
+		draw_center(y, credits_text + credits_off[i], st == 2 ? 255 : st == 1 ? 255 : 128, st == 2 ? 220 : st == 1 ? 160 : 128,
+		            st == 2 ? 40 : st == 1 ? 60 : 128);
+	}
+}
+
 /* Fin de una partida: se guarda el progreso (texto leido, galeria, finales) y se vuelve al titulo */
 static void finish_game(void)
 {
@@ -1677,7 +1776,7 @@ int main(int argc, const char *argv[])
 
 		input_update();
 		audio_update();
-		in_game = state <= ST_ERROR || state == ST_TRANS;
+		in_game = state <= ST_ERROR || state == ST_TRANS || state == ST_SCROLL || state == ST_CREDITS;
 		if (in_game)
 			anim_sounds();
 		if (in_game && input_pressed(PAD_SELECT))
@@ -1762,12 +1861,18 @@ int main(int argc, const char *argv[])
 			if (input_pressed(PAD_CROSS) || input_pressed(PAD_CIRCLE))
 				state = notice_next;
 			break;
+		case ST_SCROLL:
+			update_scroll();
+			break;
+		case ST_CREDITS:
+			update_credits();
+			break;
 		default:
 			break;
 		}
 
 		transition_offset();
-		if (state != ST_GALLERY)
+		if (state != ST_GALLERY && state != ST_SCROLL)
 			draw_scene();
 		draw_transition();
 		switch (state) {
@@ -1811,6 +1916,12 @@ int main(int argc, const char *argv[])
 			panel();
 			draw_center(92, notice_text, 128, 128, 128);
 			draw_center(140, "X continuar", 96, 96, 96);
+			break;
+		case ST_SCROLL:
+			draw_scroll();
+			break;
+		case ST_CREDITS:
+			draw_credits();
 			break;
 		default:
 			break;

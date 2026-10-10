@@ -95,10 +95,10 @@ def build_game_bin(meta, start_chapter, start_offset):
     return out
 
 
-def spanish_strings():
-    """Pares old -> new de las traducciones de pantallas (titulos de los capitulos extra)."""
+def spanish_strings(rel="screens.rpy"):
+    """Pares old -> new de una traduccion de cadenas (titulos de los capitulos extra, creditos)."""
     out, old = {}, None
-    for line in (ROOT / "original" / "game" / "tl" / "es" / "screens.rpy").read_text(encoding="utf-8").splitlines():
+    for line in (ROOT / "original" / "game" / "tl" / "es" / rel).read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if line.startswith("old "):
             old = line[4:].strip().strip('"')
@@ -106,6 +106,46 @@ def spanish_strings():
             out[old] = line[4:].strip().strip('"')
             old = None
     return out
+
+
+def literal_after(text, name):
+    """Valor literal de `name = [...]` o `{...}` en un archivo de Ren'Py (sin las llamadas _() de traduccion)."""
+    import ast
+    import re
+    start = text.index(name + " = ") + len(name) + 3
+    depth, i, quote = 0, start, None
+    while True:
+        c = text[i]
+        if quote:
+            quote = None if c == quote else quote       # dentro de una cadena los corchetes no cuentan
+        elif c in "\"'":
+            quote = c
+        elif c in "[{":
+            depth += 1
+        elif c in "]}":
+            depth -= 1
+        i += 1
+        if depth == 0 and not quote:
+            break
+    body = re.sub(r"_\((\"[^\"]*\"|'[^']*')\)", r"\1", text[start:i])
+    return ast.literal_eval(body)
+
+
+def credits_lines():
+    """Creditos finales (`label lending`): (estilo, texto) con 0 nombre, 1 encabezado, 2 titulo."""
+    text = (ROOT / "original" / "game" / "src" / "credits.rpy").read_text(encoding="utf-8")
+    es = spanish_strings("src/credits.rpy")
+    # en la traduccion los saltos de linea van escritos como \n; "[[" es el escape de Ren'Py para "["
+    tr = lambda t: es.get(t.replace("\n", "\\n"), t).replace("\\n", "\n").replace("[[", "[")
+    start, groups, end = (literal_after(text, n) for n in ("list_credits_start", "list_credits", "list_credits_end"))
+    lines = [(2, tr(start[0])), (1, tr(start[1])), (0, tr(start[2])), (0, "")]
+    for head, names in groups.items():
+        lines.append((1, tr(head)))
+        lines += [(0, tr(n)) for n in names]
+        lines.append((0, ""))
+    lines.append((2, tr(end[0])))
+    lines += [(0, part) for part in tr(end[1]).split("\n")]
+    return lines
 
 
 def chapter_title(label, extras):
@@ -133,6 +173,13 @@ def ui_table(program, meta):
         e = meta["entries"][label]
         name = extras[label].encode("utf-8")[:40]
         out += struct.pack("<HIB", e["chapter"], e["offset"], len(name)) + name
+    pages = sorted(i for i, img in enumerate(meta["images"]) if img and img["names"][0].startswith("ui textscroll "))
+    out += struct.pack("<HB", pages[0] if pages else 0, len(pages))
+    lines = credits_lines()
+    out += struct.pack("<H", len(lines))
+    for style, line in lines:
+        data = line.strip().encode("utf-8")[:60]
+        out += bytes([style, len(data)]) + data
     return out
 
 
