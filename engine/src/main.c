@@ -8,6 +8,7 @@
 #include <string.h>
 #include <psxapi.h>
 #include <psxpad.h>
+#include "audio.h"
 #include "cd.h"
 #include "img.h"
 #include "input.h"
@@ -267,6 +268,90 @@ static void notify(void *user, int opcode, const int32_t *args, int nargs)
 	case OP_UNLOCK_BONUS:
 		bonus_mask |= 1u << (args[0] & 31);
 		break;
+	case OP_MUSIC_PLAY:
+		audio_music_play(args[0], args[1], args[2]);
+		break;
+	case OP_MUSIC_QUEUE:
+		audio_music_queue(args[0]);
+		break;
+	case OP_MUSIC_STOP:
+		audio_music_stop(args[0]);
+		break;
+	case OP_AMBIENT_PLAY:
+		audio_ambient_play(args[0], args[1], args[2]);
+		break;
+	case OP_AMBIENT_STOP:
+		audio_ambient_stop(args[0], args[1]);
+		break;
+	case OP_SFX_PLAY:
+		if (!skip_mode)                  /* al saltar no suenan los efectos (como en Ren'Py) */
+			audio_sfx_play(args[0]);
+		break;
+	case OP_SFX_STOP:
+		audio_sfx_stop();
+		break;
+	case OP_VOLUME:
+		audio_volume(args[0], args[1], args[2]);
+		break;
+	}
+}
+
+static int op_size(const OpInfo *info)
+{
+	const char *f;
+	int n = 0;
+
+	for (f = info->fmt; *f; f++)
+		n += (*f == 'H' || *f == 'h') ? 2 : (*f == 'I') ? 4 : 1;
+	return n;
+}
+
+/* Mientras se lee una linea se cargan los efectos que vienen, para no leer el CD justo cuando deben sonar */
+static void preload_upcoming(void)
+{
+	uint32_t pc = vm.pc;
+	int n;
+
+	for (n = 0; n < 48 && pc < vm.ch.code_size; n++) {
+		const uint8_t *p = vm.ch.code + pc;
+		const OpInfo *info = op_info(p[0]);
+
+		if (!info || p[0] == OP_MENU || p[0] == OP_JUMP || p[0] == OP_JUMP_IF_FALSE || p[0] == OP_CALL ||
+		    p[0] == OP_RETURN || p[0] == OP_LOAD_CHAPTER || p[0] == OP_END)
+			return;
+		if (p[0] == OP_SFX_PLAY)
+			audio_preload(rd16(p + 1));
+		pc += 1 + op_size(info);
+	}
+}
+
+/* Sonidos dentro de las animaciones (`play sound` en un bloque ATL): suenan al pasar su tiempo */
+static void anim_sounds(void)
+{
+	int i, e;
+
+	for (i = 0; i < VM_MAX_SPRITES; i++) {
+		VmSprite *s = &vm.sprites[i];
+		const uint8_t *anim, *ev;
+		int t;
+
+		if (!s->used || !s->anim)
+			continue;
+		anim = scene_anim(&vm, s->anim);
+		if (!anim || !anim[2])
+			continue;
+		t = video_frames() - (int)s->shown_at;
+		ev = anim + 3 + 15 * anim[0];
+		for (e = 0; e < anim[2]; e++, ev += 7) {
+			int at = rd16(ev);
+
+			if ((ev[4] & 2) && at > s->sound_t && at <= t && !skip_mode) {
+				int variants = rd16(ev + 5);
+
+				audio_sfx_play(rd16(ev + 2) + (variants > 1 ? random_below(variants) : 0));
+			}
+		}
+		s->sound_t = t;
 	}
 }
 
@@ -486,6 +571,8 @@ static void start_say(void)
 	int gid = vm.ev_gid;
 
 	say_seen_before = seen_get(gid);
+	if (!skip_mode)
+		preload_upcoming();
 	text_start(&run, text_string(vm.ev_text));
 	state = ST_SAY;
 }
@@ -526,6 +613,7 @@ static void begin(int chapter, uint32_t offset, int var, int value)
 {
 	memset(vm.sprites, 0, sizeof(vm.sprites));
 	vm.bg = 0;
+	audio_stop_all();
 	memset(vm.vars, 0, sizeof(vm.vars));
 	if (var < VM_VARS)
 		vm.vars[var] = (int16_t)value;
@@ -658,6 +746,7 @@ int main(int argc, const char *argv[])
 
 	video_init();
 	cd_init();
+	audio_init();
 	input_init();
 	boot_stage = 1;
 	boot_screen(0);
@@ -683,6 +772,8 @@ int main(int argc, const char *argv[])
 		int vb;
 
 		input_update();
+		audio_update();
+		anim_sounds();
 		if (input_pressed(PAD_SELECT))
 			debug = !debug;
 		if (input_pressed(PAD_SQUARE))

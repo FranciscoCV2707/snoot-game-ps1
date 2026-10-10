@@ -37,6 +37,8 @@ MUSIC_TARGET_DB = -12.0               # nivel RMS objetivo de la musica
 GAIN_MIN_DB, GAIN_MAX_DB = -12.0, 3.0  # limites del ajuste por pista
 SFX_RATE = 22050
 AMBIENT_RATE = 16000
+SFX_RATE_LONG = 11025
+SFX_MAX_BYTES = 192 * 1024   # un efecto mas grande se baja a SFX_RATE_LONG (la SPU reserva ~280 KB para efectos)
 AMBIENT_LOOP_SECONDS = 6.0
 AMBIENT_CROSSFADE = 0.5
 KIND_NONE, KIND_MUSIC, KIND_MUSIC_END, KIND_SFX, KIND_AMBIENT = 0, 1, 2, 3, 4
@@ -347,6 +349,10 @@ def build_sfx(usage, meta_audio):
             continue
         rate = AMBIENT_RATE if looping else SFX_RATE
         x = decode(GAME / path, rate)
+        if not looping and len(x) * 16 // 28 > SFX_MAX_BYTES:
+            # efectos largos (zumbidos, ruidos): a media frecuencia para que quepan en la zona de efectos de la SPU
+            rate = SFX_RATE_LONG
+            x = decode(GAME / path, rate)
         if looping:
             x = loop_segment(x, rate)
         data = encode_spu(x, rate, i, looping)

@@ -28,6 +28,7 @@ XML = """<?xml version="1.0" encoding="utf-8"?>
 		<directory_tree>
 			<file name="SYSTEM.CNF" type="data" source="system.cnf" />
 			<file name="SNOOT.EXE" type="data" source="snoot.exe" />
+			<file name="MUSIC.XA" type="mixed" source="../data/MUSIC.XA" />
 			<dir name="DATA">
 {files}
 			</dir>
@@ -140,13 +141,15 @@ def main():
 
     WORK.mkdir(parents=True, exist_ok=True)
     for old in WORK.glob("*"):
-        if old.is_file() and old.suffix.upper() in (".IMG", ".VNB", ".TXT", ".BIN", ".EXE"):
+        if old.is_file() and old.suffix.upper() in (".IMG", ".VNB", ".TXT", ".BIN", ".EXE", ".SPU"):
             old.unlink()
 
     game_bin = build_game_bin(meta, entry["chapter"], entry["offset"])
     if args.chapters == "all":
         game_bin += dev_chapter_table(program, meta)
-    sources = [("GAME.BIN", game_bin), ("FONT.BIN", (DATA / "FONT.BIN").read_bytes())]
+    sources = [("GAME.BIN", game_bin), ("FONT.BIN", (DATA / "FONT.BIN").read_bytes()),
+               ("AUDIO.BIN", (DATA / "audio_index.bin").read_bytes())]
+    sources += [(f.name, f.read_bytes()) for f in sorted((DATA / "SFX").glob("S*.SPU"))]
     images = set()
     for idx in chapters:
         fname = "STORY.VNB" if program.chapters[idx].name == "STORY" else f"C{idx:02d}.VNB"

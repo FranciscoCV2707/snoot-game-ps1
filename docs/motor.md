@@ -1,12 +1,14 @@
 # Motor PS1 (engine/)
 
-Estado: Fase 7 en curso (primer juego jugable). Se construye con `python -m tools.engine.build_game [--chapters 0,1]`, que genera `build/engine/snoot_game.cue` con los capitulos pedidos y solo las imagenes que usan.
+Estado: Fase 8 en curso (audio hecho; siguen transiciones, titulo, pausa, guardado). Se construye con `python -m tools.engine.build_game [--chapters 0,1]`, que genera `build/engine/snoot_game.cue` con los capitulos pedidos y solo las imagenes que usan.
 
 ## Modulos
 | Archivo | Que hace |
 |---|---|
 | `src/video.c` | GPU, dos framebuffers de 320x240, tabla de orden por capas, memoria de primitivas, recorte 16:9 |
-| `src/cd.c` | Lee archivos del CD a RAM (por nombre en la demo; el juego usara una tabla de sectores) |
+| `src/cd.c` | Lee archivos o sectores del CD a RAM (por nombre; la tabla de sectores llega en la Fase 9). Cada lectura pausa y reanuda la musica |
+| `src/audio.c` | Musica XA por carriles (bucles, intro -> bucle, finales de familia, stems), ambientes en 4 voces fijas y efectos con cache en la RAM de la SPU |
+| `src/scene.c` | Escena portable (tambien en la auditoria): orden, aspecto de cada sprite en el tiempo de su animacion, mezcla de colores solidos |
 | `src/lz4.c` | Decodificador LZ4 (D9) |
 | `src/img.c` | Carga imagenes IMG1 (paleta a CLUT, indices a VRAM) y las dibuja; parte los fondos de 320 px en dos sprites |
 | `src/text.c` | Fuente de 4 bits con mezcla aditiva, UTF-8, codigos de control y efecto de maquina de escribir |
@@ -25,7 +27,12 @@ Estado: Fase 7 en curso (primer juego jugable). Se construye con `python -m tool
 X avanza o completa el texto y confirma en menus, d-pad arriba/abajo elige, R1 salta lineas ya leidas (se detiene en lineas nuevas y menus), Cuadrado oculta la caja, Select muestra la depuracion.
 
 ## Pendiente en el motor (fases siguientes)
-Animaciones de sprites, transiciones, camara, audio, guardado, SAYX (extender dialogo), SHOW_RANDOM, packs de carga y fondos/CG mas grandes que una pagina de VRAM.
+Transiciones, camara animada, guardado, titulo, pausa, galeria y packs de carga.
+
+## Audio
+- RAM de la SPU: 4 KB del sistema, zona de efectos (~284 KB, se vacia entera al llenarse) y 4 espacios de 56 KB para ambientes (voces 0-3). Efectos en las voces 4-23.
+- Al mostrar una linea se precargan los efectos de las siguientes instrucciones; al saltar (R1) no suenan los efectos.
+- Los efectos de mas de 192 KB se convierten a 11 kHz (`tools/audio/convert.py`) para caber en su zona.
 
 ## Zona segura
 La interfaz (indicadores, iconos) se mantiene a unos 10 pixeles de los bordes: algunos emuladores y televisores recortan las esquinas. El triangulo de "presiona X" se vio cortado en (304, 228) y quedo bien en (290, 216).

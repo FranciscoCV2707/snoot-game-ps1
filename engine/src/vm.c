@@ -128,6 +128,7 @@ static void scene_show(Vm *vm, const int32_t *a)
 		s->pos = (uint8_t)a[2];
 		s->anim = (uint16_t)a[5];
 		s->shown_at = vm->now;
+		s->sound_t = -1;
 	}
 	s->flags = (uint8_t)a[4];
 }

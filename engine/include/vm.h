@@ -34,6 +34,7 @@ typedef struct {
 	uint32_t born;              /* orden de creacion (desempata el z) */
 	uint32_t shown_at;          /* vm->now cuando empezo su animacion */
 	int16_t rx, ry;             /* alineacion 8.8 de los sprites de SHOW_RANDOM */
+	int32_t sound_t;            /* ultimo cuadro de la animacion cuyos sonidos ya sonaron */
 } VmSprite;
 
 typedef enum {
