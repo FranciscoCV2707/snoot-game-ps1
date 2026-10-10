@@ -76,6 +76,11 @@ init 999 python:
         def audit_label(name, abnormal):
             if name and (name.startswith("chapter_") or name in ("storyline", "lending")):
                 audit_write(k="label", name=name)
+                # despues de los creditos el juego vuelve a empezar: la corrida ya termino
+                if name == "storyline" and _audit_state.get("credits"):
+                    renpy.quit()
+                if name == "lending":
+                    _audit_state["credits"] = True
                 if name in os.environ.get("SNOOT_AUDIT_UNTIL", "").split(","):
                     renpy.quit()
 

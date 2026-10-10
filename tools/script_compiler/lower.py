@@ -672,7 +672,11 @@ class Lowerer:
                 aligns.append((0.5, 1.0))
         if pos != POS_NONE and pos != POS_KEEP and not anim:
             info = self.p.position_info[pos]
-            self.reg.pos_state[tag] = {"xalign": info["xalign"], "yalign": info["yalign"], "xpos": None, "ypos": None}
+            self.reg.pos_state[tag] = {"xalign": info["xalign"], "yalign": info["yalign"], "xpos": None, "ypos": None,
+                                       "xanchor": info["xalign"], "yanchor": info["yalign"]}
+        elif pos == POS_NONE and not anim and tag not in self.reg.pos_state:
+            # `show x` sin `at` ni ATL: transform por defecto de Ren'Py (centro abajo), que hereda el siguiente ATL
+            self.reg.pos_state[tag] = {"xalign": 0.5, "yalign": 1.0, "xpos": None, "ypos": None, "xanchor": 0.5, "yanchor": 1.0}
         for image_id in ids:
             if full:
                 self.reg.mark_full(image_id)

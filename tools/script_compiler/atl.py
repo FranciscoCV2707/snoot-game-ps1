@@ -115,7 +115,7 @@ class State:
         self.xalign = DEFAULT_ALIGN[0]
         self.yalign = DEFAULT_ALIGN[1]
         self.xpos = self.ypos = None
-        self.xanchor = self.yanchor = 0.0
+        self.xanchor, self.yanchor = DEFAULT_ALIGN   # Ren'Py: xalign v fija xpos = v y xanchor = v
         self.alpha, self.zoom, self.xzoom, self.rotate = 1.0, 1.0, 1.0, 0.0
         self.yzoom = 1.0
         self.reveal = None
@@ -208,9 +208,9 @@ class Compiler:
     def apply(self, state, prop, value):
         """Aplica una propiedad instantanea sobre el estado. Devuelve False si no se soporta."""
         if prop == "xalign":
-            state.xalign, state.xpos = float(value), None
+            state.xalign, state.xpos, state.xanchor = float(value), None, float(value)
         elif prop == "yalign":
-            state.yalign, state.ypos = float(value), None
+            state.yalign, state.ypos, state.yanchor = float(value), None, float(value)
         elif prop == "xpos":
             state.xpos = px(value, SCREEN_W)
         elif prop == "ypos":
@@ -225,6 +225,7 @@ class Compiler:
             state.ypos, state.yanchor = px(value, SCREEN_H), 0.5
         elif prop == "align" and isinstance(value, tuple):
             state.xalign, state.yalign, state.xpos, state.ypos = float(value[0]), float(value[1]), None, None
+            state.xanchor, state.yanchor = state.xalign, state.yalign
         elif prop == "pos" and isinstance(value, tuple):
             state.xpos, state.ypos = px(value[0], SCREEN_W), px(value[1], SCREEN_H)
         elif prop in NUMERIC:
@@ -462,8 +463,13 @@ def compile_anim(lowerer, node, extra_transforms, reveal=None, atl_first=False, 
     if pos_name:
         info = lowerer.p.position_info[lowerer.p.positions[pos_name]]
         start.xalign, start.yalign = info["xalign"], info["yalign"]
+        start.xanchor, start.yanchor = info["xalign"], info["yalign"]
     elif previous is not None:
         start.__dict__.update({k: v for k, v in previous.items() if k not in ("w", "h", "reveal")})
+    elif node.atl and not slideshow:
+        # tag nuevo con bloque ATL y sin `at`: Ren'Py no aplica el transform por defecto (centro abajo), asi que lo que
+        # el bloque no fija queda en xpos/ypos/anclas 0 (esquina superior izquierda)
+        start.xalign = start.yalign = start.xanchor = start.yanchor = 0.0
     warnings = []
     comp = Compiler(lowerer.p, (w, h), start, warnings.append)
     state = start.copy()

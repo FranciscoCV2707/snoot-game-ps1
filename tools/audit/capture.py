@@ -37,7 +37,7 @@ def run_one(name, renpy, game, out, seed, timeout):
             print(f"  {name}: se agoto el tiempo ({timeout} s)")
     shots = len(list(dest.glob("s*.png"))) if dest.exists() else 0
     lines = (dest / "log.jsonl").read_text(encoding="utf-8").count("\n") if (dest / "log.jsonl").exists() else 0
-    print(f"  {name}: {shots} capturas, {lines} eventos, {time.time() - start:.0f} s")
+    print(f"  {name}: {shots} capturas, {lines} eventos, {time.time() - start:.0f} s", flush=True)
     crash = game / "traceback.txt"
     if crash.exists() and crash.stat().st_mtime > start:
         print(f"  {name}: Ren'Py fallo, ver {crash}")
