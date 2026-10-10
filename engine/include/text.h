@@ -30,6 +30,8 @@ int font_load(const uint8_t *file, int size);
 int font_line_height(void);
 /* Dibuja una cadena sin efecto de escritura (interfaz, depuracion). El color es un tinte (128 = blanco). */
 void font_draw(int layer, int x, int y, const char *utf8, int r, int g, int b);
+/* Ancho en pixeles de la primera linea */
+int font_width(const char *utf8);
 
 void text_start(TextRun *t, const char *utf8);
 void text_update(TextRun *t);                  /* un cuadro de revelado */

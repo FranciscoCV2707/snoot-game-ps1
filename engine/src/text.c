@@ -158,6 +158,24 @@ void font_draw(int layer, int x, int y, const char *utf8, int r, int g, int b)
 	video_set_tpage(layer, 0, 1, VRAM_FONT_X, VRAM_FONT_Y);
 }
 
+int font_width(const char *utf8)
+{
+	const char *p = utf8;
+	int w = 0;
+
+	while (*p) {
+		uint32_t cp = utf8_next(&p);
+		const Glyph *gl;
+
+		if (cp == '\n')
+			break;
+		gl = find_glyph(cp, 0);
+		if (gl)
+			w += gl->adv;
+	}
+	return w;
+}
+
 /* ---------------------------------------------------------------- maquina de escribir */
 void text_start(TextRun *t, const char *utf8)
 {

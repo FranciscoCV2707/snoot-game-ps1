@@ -30,6 +30,9 @@ void audio_stop_all(void);
 void audio_preload(int id);
 /* Volumen de las opciones, 0-10 */
 void audio_set_levels(int music, int sfx);
+/* Lo que suena ahora (para guardar la partida): pista de musica y ambiente de cada ranura, -1 si nada */
+int audio_music_current(void);
+int audio_ambient_current(int slot);
 
 void audio_cd_begin(void);
 void audio_cd_end(void);

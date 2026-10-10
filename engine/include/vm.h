@@ -76,6 +76,7 @@ struct Vm {
 
 	/* datos del evento actual */
 	int ev_speaker, ev_text, ev_gid, ev_extend;
+	uint32_t ev_pc;             /* inicio de la instruccion SAY o MENU del evento (donde apunta un guardado) */
 	int ev_frames, ev_flags;
 	int32_t ev_args[4];
 	int menu_n, menu_flags;

@@ -129,7 +129,7 @@ void video_snapshot(int x, int y)
 
 	DrawSync(0);
 	setRECT(&r, 0, draw[!db].clip.y + VIEW_Y, SCREEN_W, VIEW_H);
-	MoveImage(&r, x, y);
+	MoveImage2(&r, x, y);          /* directa: MoveImage (con cola e interrupcion) detenia el vblank en PCSX-Redux */
 	DrawSync(0);
 }
 

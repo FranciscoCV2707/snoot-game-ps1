@@ -211,6 +211,7 @@ VmEvent vm_run(Vm *vm)
 		if (op == OP_MENU) {
 			int n = p[2], i;
 
+			vm->ev_pc = vm->pc;
 			vm->menu_flags = p[1];
 			vm->menu_n = n > VM_MENU_MAX ? VM_MENU_MAX : n;
 			for (i = 0; i < vm->menu_n; i++) {
@@ -236,6 +237,7 @@ VmEvent vm_run(Vm *vm)
 		switch (op) {
 		case OP_SAY:
 		case OP_SAYX:
+			vm->ev_pc = vm->pc - 1 - (uint32_t)used;
 			if (a[1] >= vm->ch.text_count)
 				return fail(vm, "texto fuera de rango");
 			vm->ev_speaker = a[0];

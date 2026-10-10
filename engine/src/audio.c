@@ -458,6 +458,16 @@ void audio_volume(int channel, int volume, int time_tenths)
 		fade_set(&ambient_script[channel - 1], target, time_tenths);
 }
 
+int audio_music_current(void)
+{
+	return playing && !stop_when_silent ? cur : -1;
+}
+
+int audio_ambient_current(int slot)
+{
+	return ambient_fade[slot].target > 0 ? ambient_id[slot] : -1;
+}
+
 void audio_set_levels(int music, int sfx)
 {
 	music_level = music;

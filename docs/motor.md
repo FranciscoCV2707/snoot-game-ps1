@@ -1,6 +1,6 @@
 # Motor PS1 (engine/)
 
-Estado: Fase 8 en curso (audio y transiciones hechos; siguen titulo, pausa, guardado). Se construye con `python -m tools.engine.build_game [--chapters 0,1]`, que genera `build/engine/snoot_game.cue` con los capitulos pedidos y solo las imagenes que usan.
+Estado: Fase 8 casi completa (audio, transiciones, titulo, pausa, guardado, opciones, galeria y extras). Falta probarla a fondo en consola o emulador. Se construye con `python -m tools.engine.build_game [--chapters 0,1]`, que genera `build/engine/snoot_game.cue` con los capitulos pedidos y solo las imagenes que usan.
 
 ## Modulos
 | Archivo | Que hace |
@@ -24,10 +24,21 @@ Estado: Fase 8 en curso (audio y transiciones hechos; siguen titulo, pausa, guar
 - **Texto:** las cadenas vienen ya partidas en lineas (`\n`) y paginas; los codigos 1 a 6 y `\n`, salto de pagina se interpretan en `text.c`. Cursiva usa glifos inclinados del atlas; negrita dibuja cada glifo dos veces. Los demas codigos de tamano se ignoran por ahora.
 
 ## Controles
-X avanza o completa el texto y confirma en menus, d-pad arriba/abajo elige, R1 salta lineas ya leidas (se detiene en lineas nuevas y menus), Cuadrado oculta la caja, Select muestra la depuracion.
+X avanza o completa el texto y confirma, O vuelve, Start abre la pausa (en una linea o una decision), d-pad elige, R1 salta lineas ya leidas (se detiene en lineas nuevas y menus), Cuadrado oculta la caja, Select muestra la depuracion. En el titulo, L1 + R1 + Select abre el menu de capitulos de desarrollo.
+
+## Pantallas y guardado
+- Arranque: creditos mientras se lee la memory card; titulo (Comenzar, Continuar, Capitulos extra, Galeria, Opciones).
+- Pausa: Seguir, Saltar texto leido, Guardar, Cargar, Opciones, Salir al titulo (con confirmacion).
+- `src/save.c`: 2 archivos de 1 bloque alternados (`BASLUS-99999SNOOTA`/`B`) con numero de guardado y checksum; titulo "SNOOT GAME" en Shift-JIS e icono `MCICON.BIN`.
+- Datos (main.c, seccion guardado): volumenes, finales, extras terminados, galeria vista, texto leido y 3 ranuras (capitulo, instruccion del SAY o MENU, variables, llamadas, escena, musica y ambientes, tiempo).
+- Se guarda al elegir Guardar, al ver un final por primera vez, al terminar una partida, al salir al titulo y al cambiar las opciones.
+- Capitulos extra con la logica de `ex_ch_menu` del original (D1): segun los finales vistos y los extras terminados.
+
+## Prueba automatica
+`python -m tools.engine.emutest --steps "30 press CROSS; 200 shot juego; 210 quit"` arma un disco con `AUTOTEST.BIN` (botones por cuadro desde el titulo) y lo corre en PCSX-Redux sin interfaz; las capturas quedan en `build/emutest/`. No usa el teclado ni la pantalla de la PC.
 
 ## Pendiente en el motor (fases siguientes)
-Camara animada, guardado, titulo, pausa, galeria y packs de carga.
+Camara animada, packs de carga (Fase 9) y miniaturas en ranuras y galeria (opcional).
 
 ## Transiciones
 - Dissolve y fundidos guardan el ultimo cuadro en VRAM (`video_snapshot`, banda baja de la zona de fondos reservada con `res_reserve_snapshot`) y lo dibujan como textura de 15 bits encima de la escena nueva.

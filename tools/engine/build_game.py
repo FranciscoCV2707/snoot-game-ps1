@@ -95,6 +95,47 @@ def build_game_bin(meta, start_chapter, start_offset):
     return out
 
 
+def spanish_strings():
+    """Pares old -> new de las traducciones de pantallas (titulos de los capitulos extra)."""
+    out, old = {}, None
+    for line in (ROOT / "original" / "game" / "tl" / "es" / "screens.rpy").read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith("old "):
+            old = line[4:].strip().strip('"')
+        elif line.startswith("new ") and old is not None:
+            out[old] = line[4:].strip().strip('"')
+            old = None
+    return out
+
+
+def chapter_title(label, extras):
+    if label in extras:
+        return extras[label]
+    return "Capítulo " + label.removeprefix("chapter_").replace("_", ".")
+
+
+def ui_table(program, meta):
+    """Seccion UI01 de GAME.BIN: logo y candado del titulo, imagenes de los 4 finales, nombre de cada capitulo y la
+    lista de capitulos extra (en el orden del menu original) con su entrada."""
+    by_name = {n: i for i, img in enumerate(meta["images"]) if img for n in img["names"]}
+    endings = sorted((img["ending"], i) for i, img in enumerate(meta["images"]) if img and img.get("ending"))
+    es = spanish_strings()
+    extras = {label: es.get(title, title) for title, label in meta["extra_chapters"]}
+    names = {e["chapter"]: label for label, e in meta["entries"].items()}
+    out = b"UI01" + struct.pack("<HH", by_name.get("ui logo", 0), by_name.get("ui lock", 0))
+    out += struct.pack("<4H", *[i for _, i in endings][:4])
+    out += struct.pack("<H", len(program.chapters))
+    for idx in range(len(program.chapters)):
+        name = chapter_title(names[idx], extras).encode("utf-8")[:40] if idx in names else b""
+        out += bytes([len(name)]) + name
+    out += bytes([len(meta["extra_chapters"])])
+    for _, label in meta["extra_chapters"]:
+        e = meta["entries"][label]
+        name = extras[label].encode("utf-8")[:40]
+        out += struct.pack("<HIB", e["chapter"], e["offset"], len(name)) + name
+    return out
+
+
 def dev_chapter_table(program, meta):
     """Menu de desarrollo: cada LOAD_CHAPTER de STORY, con la variable de ruta que lo protege (si la hay)."""
     names = {e["chapter"]: label for label, e in meta["entries"].items()}
@@ -124,6 +165,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--chapters", default="all", help="indices separados por coma, o all")
     ap.add_argument("--start", default="story", help="story (la historia completa, capitulo tras capitulo) o una etiqueta")
+    ap.add_argument("--autotest", type=Path, help="AUTOTEST.BIN de una prueba automatica (tools/engine/emutest.py)")
     args = ap.parse_args()
 
     program = Program(DATA)
@@ -145,17 +187,20 @@ def main():
             old.unlink()
 
     game_bin = build_game_bin(meta, entry["chapter"], entry["offset"])
-    if args.chapters == "all":
-        game_bin += dev_chapter_table(program, meta)
+    game_bin += dev_chapter_table(program, meta) if args.chapters == "all" else struct.pack("<HH", program.story_index, 0)
+    game_bin += ui_table(program, meta)
     sources = [("GAME.BIN", game_bin), ("FONT.BIN", (DATA / "FONT.BIN").read_bytes()),
-               ("AUDIO.BIN", (DATA / "audio_index.bin").read_bytes())]
+               ("AUDIO.BIN", (DATA / "audio_index.bin").read_bytes()), ("MCICON.BIN", (DATA / "MCICON.BIN").read_bytes())]
     sources += [(f.name, f.read_bytes()) for f in sorted((DATA / "SFX").glob("S*.SPU"))]
+    if args.autotest:
+        sources.append(("AUTOTEST.BIN", args.autotest.read_bytes()))
     images = set()
     for idx in chapters:
         fname = "STORY.VNB" if program.chapters[idx].name == "STORY" else f"C{idx:02d}.VNB"
         sources.append((f"C{idx:02d}.VNB", (DATA / "SCRIPT" / fname).read_bytes()))
         sources.append((f"T{idx:02d}.TXT", text_block(raw_text, idx)))
         images |= chapter_images(program.chapters[idx])
+    images |= {i for i, img in enumerate(meta["images"]) if img and img["names"][0].startswith("ui ")}
     images.discard(0)
     for i in sorted(images):
         path = DATA / "IMG" / f"I{i:04d}.IMG"

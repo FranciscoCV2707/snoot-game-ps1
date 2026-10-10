@@ -42,3 +42,15 @@ def test_uniform_translucent_detects_even_veils_only():
     ramp = np.tile(np.linspace(30, 255, 8).astype(np.uint8), (8, 1))
     assert not uniform_translucent(ramp)
     assert not uniform_translucent(np.full((8, 8), 255, np.uint8))
+
+
+def test_emutest_script_encoding():
+    import struct
+    from tools.engine.emutest import QUIT, SHOT, autotest_bin, parse_steps
+    steps = parse_steps("40 press CROSS; 30 shot titulo; 90 quit")
+    assert [s[0] for s in steps] == [30, 40, 90]
+    blob = autotest_bin(steps)
+    assert struct.unpack_from("<H", blob)[0] == 3
+    assert struct.unpack_from("<IH", blob, 2) == (30, SHOT)
+    assert struct.unpack_from("<IH", blob, 8) == (40, 1 << 14)
+    assert struct.unpack_from("<IH", blob, 14) == (90, QUIT)
