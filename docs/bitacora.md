@@ -1,5 +1,17 @@
 # Bitácora
 
+## 2026-10-09 - Fases 8 y 9, inicio de la 10
+Hecho:
+- Audio (`engine/src/audio.c`): XA por carriles, ambientes y efectos en la SPU; los efectos de mas de 192 KB se convierten a 11 kHz.
+- Transiciones con copia de pantalla en VRAM (`MoveImage2`: `MoveImage` detenia el vblank en PCSX-Redux) y bit de mascara en todo lo dibujado.
+- Memory card (`engine/src/save.c`), titulo, pausa, ranuras, opciones, galeria, extras, chat del capitulo 4 y creditos.
+- `build.py` (todo en ~1 minuto) y `tools/release.py` (zip para probadores con LEEME).
+- Pruebas sin tocar el teclado: `AUTOTEST.BIN` en el disco (botones, capturas, autoplay) + `tools/engine/emutest.py` y `tools/engine/playtest.py` en PCSX-Redux sin interfaz.
+
+Pendiente:
+- Escuchar el audio en DuckStation (las pruebas automaticas no oyen).
+- Tabla de sectores precalculada y paquetes de carga contiguos (D7), si las cargas resultan lentas.
+
 ## 2026-10-09 - Auditoria visual contra Ren'Py
 Hecho:
 - `tools/audit/capture.py` corre `zz_audit.rpy` en una copia del juego (una instancia a la vez: varias en paralelo chocan con el `persistent` y trabaron la PC). Corridas: base (cap. 1-11), r1-r4 (rutas) y x1-x10 (extras).

@@ -2,7 +2,7 @@
 
 Ultima actualizacion: 2026-10-09
 
-## Fase actual: 7 casi terminada (falta tu prueba del modo saltar y del disco completo); siguiente: 8
+## Fase actual: 10 (pruebas) para sacar la v0.1 a probadores; Fases 8 y 9 hechas
 
 ## Hecho
 ### Fase 0 - Entorno (terminada)
@@ -68,19 +68,27 @@ Ultima actualizacion: 2026-10-09
 - [x] Modo saltar segun el plan: R1 activa/detiene, ">> Saltando", sin lecturas de CD, se detiene en texto no leido, finales y cambio de capitulo; sigue tras una decision
 - [x] Galeria: se marcan las imagenes vistas (SCENE/SHOW/MARK_SEEN) con la tabla de GAME.BIN
 - [x] Auditoria visual contra Ren'Py de todo el juego (base, 4 rutas, 10 extras): faltantes, orden de personajes, posiciones, dimmers, destellos, fondos espejados y animaciones corregidos (ver docs/bitacora.md)
-- [ ] Tu prueba: modo saltar y disco con todos los capitulos
-- Nota: RAM usada ~1.14 MB (bufer de 512 KB para fondos con Pan); revisar contra el bufer de carga en la Fase 8
+- Nota: RAM usada ~1.14 MB (bufer de 512 KB para fondos con Pan)
+
+### Fase 8 - Audio, transiciones, guardado y menus (hecha)
+- [x] Musica XA por carriles (bucles, intro -> bucle, finales de familia, stems sincronizados, fundidos); ambientes y efectos con cache en la SPU; pausa y reanudacion de la musica en cada lectura del CD
+- [x] Transiciones: disolver (copia de pantalla en VRAM), fundidos a negro/blanco, sacudidas, movimiento
+- [x] Creditos de arranque, titulo, pausa, guardar/cargar en 3 ranuras (2 archivos alternados con checksum), opciones de volumen, galeria, capitulos extra con la logica original, autoguardado del progreso
+- [x] Chat del capitulo 4 (textscroll) y creditos finales
+- [x] Probado en PCSX-Redux sin interfaz con `tools/engine/emutest.py` (guardar, Continuar, opciones, galeria, chat)
+
+### Fase 9 - Build automatico (hecha)
+- [x] `python build.py`: scripts, simulador, imagenes, audio (solo si cambio), motor y disco en ~1 minuto; disco de 213 MB (27% del CD)
+
+### Fase 10 - Pruebas (en curso)
+- [x] `python -m tools.engine.playtest`: recorre en autoplay la historia, las 4 rutas y los 10 extras; reporte en build/reports/playtest.md
+- [ ] Revisar el reporte y corregir lo que aparezca
+- [ ] `python -m tools.release 0.1` -> dist/SnootGamePS1-v0.1.zip para probadores
 
 ## Siguiente
-- [ ] Tu revision de docs/decisiones.md, docs/bytecode.md y docs/presupuesto-memoria.md
-- [ ] Fase 8 - Motor PS1: audio, transiciones, guardado y menus
-
-## Pendiente (fases siguientes)
-- [ ] Fase 7 - Motor PS1: interprete y escenas
-- [ ] Fase 8 - Motor PS1: audio, transiciones, guardado y menus
-- [ ] Fase 9 - Construccion del CD y build automatico
-- [ ] Fase 10 - Pruebas y control de calidad
-- [ ] Fase 11 - Pulido, hardware real y distribucion
+- [ ] Tu prueba en DuckStation (sonido incluido) y luego la v0.1 para probadores
+- [ ] Fase 11 - Pulido, hardware real y distribucion (con lo que reporten los probadores)
+- [ ] Opcional: tabla de sectores precalculada y paquetes de carga contiguos (hoy se usa CdSearchFile)
 
 ## Notas
 - mkpsxiso 2.10 no admite rutas absolutas de Windows en el XML; usar rutas relativas (ver docs/entorno.md).
@@ -90,4 +98,5 @@ Ultima actualizacion: 2026-10-09
 - Riesgos resueltos por diseno: D12 huecos de musica (copias seguidas + rebobinado en transiciones), D13 personajes (sin capas; solo se pre-componen fondos con texto y pantallas de telefono), D14 animaciones (zoom/giro con POLY_FT4, tinte con modulacion de color).
 - Riesgo que solo se confirma en consola real (Fase 11): duracion real del salto de busqueda del CD.
 - Estadisticas de bucles: `python tools/audio/segment_stats.py`.
+- Prueba en emulador sin usar teclado ni pantalla: `python -m tools.engine.emutest --steps "30 press CROSS; 200 shot juego; 210 quit"`.
 - Auditoria visual: `python -m tools.audit.capture` (Ren'Py, una instancia a la vez; ~1.5 h todo) y `python -m tools.audit.compare <carpeta>...` (hojas en `<carpeta>/report/`).
