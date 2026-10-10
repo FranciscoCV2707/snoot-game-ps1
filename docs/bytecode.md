@@ -53,7 +53,7 @@ Formato: `opcode u8` seguido de los argumentos. Tamaños en bytes entre parénte
 ### Imágenes
 | Op | Nombre | Argumentos | Ren'Py |
 |---|---|---|---|
-| 0x10 | `SCENE` | imagen u16 (3); 0 = negro | `scene fondo` (borra todos los sprites) |
+| 0x10 | `SCENE` | imagen u16, anim u16 (5); 0 = negro | `scene fondo` (borra todos los sprites); el bit 15 de `anim` espeja el fondo (`scene moes pizza mirrored`), los demás indexan la tabla ANIM (Pan) |
 | 0x11 | `SHOW` | tag u8, imagen u16, pos u8, z i8, flags u8, anim u16 (9) | `show anon neutral at sleft`, `behind`, `flip`, `at` con ATL |
 | 0x12 | `HIDE` | tag u8 (2) | `hide fang` |
 | 0x13 | `TRANSITION` | tipo u8, a u16, b u16, c u16 (8) | `with Dissolve(1)`, `with fade`, `with None` |

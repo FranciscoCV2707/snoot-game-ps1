@@ -97,6 +97,7 @@ init 999 python:
 
 label audit_main:
     $ renpy.change_language("es")
+    $ persistent.lewd = True
     $ _preferences.skip_unseen = True
     $ _preferences.transitions = 2
     $ active_queue = list(BASE_CHAPTERS)

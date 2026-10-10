@@ -109,7 +109,7 @@ static void notify(void *u, int op, const int32_t *a, int n)
 /* Fondo: la posicion final de su Pan (la captura de Ren'Py se toma cuando la escena ya se asento) */
 static void bg_align(int *xa, int *ya)
 {
-	const uint8_t *anim = scene_anim(&vm, vm.bg_anim);
+	const uint8_t *anim = scene_anim(&vm, vm.bg_anim & 0x7FFF);
 
 	*xa = 128;
 	*ya = 256;
@@ -182,8 +182,8 @@ static void frame(void)
 			printf("R 0 1 %d %d %d\n", bg->solid[0], bg->solid[1], bg->solid[2]);
 		} else if (bg) {
 			bg_align(&xa, &ya);
-			printf("D %d %d %d 0 64 128 128 128\n", vm.bg, ((SCREEN_W - bg->full_w) * xa) / 256,
-			       ((VIEW_H - bg->full_h) * ya) / 256);
+			printf("D %d %d %d %d 64 128 128 128\n", vm.bg, ((SCREEN_W - bg->full_w) * xa) / 256,
+			       ((VIEW_H - bg->full_h) * ya) / 256, vm.bg_anim >> 15);
 		}
 	}
 	for (rank = first; rank < n; rank++) {

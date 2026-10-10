@@ -18,6 +18,7 @@ SFX_CHANNELS = {"sound", "audio"}
 VOLUME_CHANNELS = {"music": 0, "ambient": 1, "ambient1": 2, "ambient2": 3, "ambient3": 4, "sound": 5, "audio": 5}
 SPECIAL_TEXTSCROLL, SPECIAL_CREDITS = 1, 2
 SHOW_RANDOM_FIRST = ("text1",)
+SCENE_FLIP = 0x8000            # bit alto del anim de SCENE: fondo espejado (`scene moes pizza mirrored`)
 NUM = r"\s*(-?[\d.]+)\s*"
 PAN_RE = re.compile(rf"\bPan\(\s*\({NUM},{NUM}\)\s*,\s*\({NUM},{NUM}\)\s*,{NUM}")
 
@@ -558,7 +559,7 @@ class Lowerer:
         self.reg.mark_full(iid)
         # Ren'Py olvida el estado de los transforms al vaciar la escena: lo siguiente empieza en la posicion por defecto
         self.reg.pos_state.clear()
-        self.emit("SCENE", n.line, image=iid, anim=anim)
+        self.emit("SCENE", n.line, image=iid, anim=anim | (SCENE_FLIP if flip else 0))
         if self.under_camera():
             self.ir.insts[-1].args["_shot"] = {"key": key, "xalign": 0.5, "yalign": 1.0, "zoom": 1.0,
                                                "camera": dict(self.reg.camera)}

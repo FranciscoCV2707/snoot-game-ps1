@@ -274,7 +274,7 @@ static void notify(void *user, int opcode, const int32_t *args, int nargs)
 /* Alineacion del fondo en el cuadro actual (8.8 desplazado 8 bits mas): interpolacion lineal entre claves (Pan). */
 static void bg_align(int *xa, int *ya)
 {
-	const uint8_t *anim = scene_anim(&vm, vm.bg_anim), *k0, *k1;
+	const uint8_t *anim = scene_anim(&vm, vm.bg_anim & 0x7FFF), *k0, *k1;
 	int t = video_frames() - bg_start, n, i, t0, t1, x0, y0;
 
 	*xa = 128 << 8;                /* sin animacion: posicion por defecto de Ren'Py */
@@ -353,7 +353,7 @@ static void draw_bg(void)
 			if (bg->big)
 				img_draw_big(bg, LAYER_BG, bx, by);
 			else
-				img_draw(bg, LAYER_BG, bx, by);
+				img_draw_flip(bg, LAYER_BG, bx, by, vm.bg_anim >> 15);
 		}
 	}
 }

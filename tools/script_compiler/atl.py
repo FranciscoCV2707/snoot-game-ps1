@@ -466,7 +466,7 @@ def compile_anim(lowerer, node, extra_transforms, reveal=None, atl_first=False, 
         start.xanchor, start.yanchor = info["xalign"], info["yalign"]
     elif previous is not None:
         start.__dict__.update({k: v for k, v in previous.items() if k not in ("w", "h", "reveal")})
-    elif node.atl and not slideshow:
+    elif node.atl:
         # tag nuevo con bloque ATL y sin `at`: Ren'Py no aplica el transform por defecto (centro abajo), asi que lo que
         # el bloque no fija queda en xpos/ypos/anclas 0 (esquina superior izquierda)
         start.xalign = start.yalign = start.xanchor = start.yanchor = 0.0
