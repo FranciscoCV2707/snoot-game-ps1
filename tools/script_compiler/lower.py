@@ -123,8 +123,11 @@ class Registry:
             src = recipe
             if flip:
                 src = {"op": "flip", "src": src, "horizontal": True}
-            if abs(zc * zoom - 1.0) > 1e-6:
-                src = {"op": "effect", "effect": "Transform", "src": src, "args": [], "kwargs": {"zoom": zc * zoom}}
+            if abs(zc * zoom - 1.0) > 1e-6 or layer.get("blur"):
+                kwargs = {"zoom": zc * zoom}
+                if layer.get("blur"):
+                    kwargs["blur"] = layer["blur"]
+                src = {"op": "effect", "effect": "Transform", "src": src, "args": [], "kwargs": kwargs}
             parts.append({"pos": [zc * x - tx, zc * y - ty], "src": src})
         recipe = {"op": "composite", "size": [int(atl_module.SCREEN_W), int(atl_module.SCREEN_H)], "layers": parts}
         sig = repr(recipe)
@@ -556,9 +559,13 @@ class Lowerer:
             if pan:
                 x0, y0, x1, y1, seconds = (float(v) for v in pan.groups())
                 anim = atl_module.compile_pan(self, key, (x0, y0), (x1, y1), seconds)
-        self.reg.mark_full(iid)
         # Ren'Py olvida el estado de los transforms al vaciar la escena: lo siguiente empieza en la posicion por defecto
         self.reg.pos_state.clear()
+        if not spec and not pan and n.atl:
+            framed = self.framed_scene(n, key)
+            if framed is not None:
+                iid, flip = framed, False
+        self.reg.mark_full(iid)
         self.emit("SCENE", n.line, image=iid, anim=anim | (SCENE_FLIP if flip else 0))
         if self.under_camera():
             self.ir.insts[-1].args["_shot"] = {"key": key, "xalign": 0.5, "yalign": 1.0, "zoom": 1.0,
@@ -568,6 +575,24 @@ class Lowerer:
         if n.with_:
             self.transition(n.with_, n)
         return state
+
+    def framed_scene(self, n, key):
+        """`scene X:` con bloque ATL (zoom, desenfoque, desplazamiento): el fondo se pre-renderiza encuadrado como queda
+        al terminar el bloque. None si el bloque no cambia nada visible (por ejemplo `size(1920, 1080)`)."""
+        import types
+        node = types.SimpleNamespace(tag="_scene", atl=n.atl, at=[], line=n.line, file=n.file)
+        self.reg.last_key["_scene"] = key
+        atl_module.compile_anim(self, node, [])
+        w, h = atl_module.image_size(self.p, key)
+        st = atl_module.State(w, h)
+        st.__dict__.update({k: v for k, v in self.reg.pos_state.pop("_scene", {}).items() if k not in ("w", "h")})
+        xa, ya = st.effective()
+        left = xa * (atl_module.SCREEN_W - w * st.zoom)
+        top = ya * (atl_module.SCREEN_H - h * st.zoom)
+        if abs(st.zoom - 1.0) < 1e-3 and not st.blur and abs(left) < 1 and abs(top) < 1:
+            return None
+        return self.reg.camera_shot([{"key": key, "xalign": xa, "yalign": ya, "zoom": st.zoom, "blur": st.blur}],
+                                    {"zoom": 1.0, "x": 0.0, "y": 0.0})
 
     def n_Show(self, n, state):
         if n.image[0] == "expression":

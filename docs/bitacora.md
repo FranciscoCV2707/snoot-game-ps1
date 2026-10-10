@@ -1,5 +1,19 @@
 # Bitácora
 
+## 2026-10-09 - Auditoria visual contra Ren'Py
+Hecho:
+- `tools/audit/capture.py` corre `zz_audit.rpy` en una copia del juego (una instancia a la vez: varias en paralelo chocan con el `persistent` y trabaron la PC). Corridas: base (cap. 1-11), r1-r4 (rutas) y x1-x10 (extras).
+- `tools/audit/compare.py` + `ps1_frames.c`: ejecutan la VM y `scene.c` del motor con las mismas decisiones, componen cada cuadro de PS1 y lo comparan con la captura (`report/`, `report.json`, `missing.json`).
+- Motor: `scene.c` compartido (orden, aspecto, mezcla de solidos); animaciones ATL reproducidas en el tiempo (curvas, bucles, cambios de imagen), `showCG()` con aparicion y desvanecido, dimmers y destellos blancos con mezcla de la GPU, zoom y tinte estaticos, fondos espejados, grano de pelicula translucido, prioridad de VRAM para el fondo.
+- Compilador: `ORDER` para `behind`; el estado ATL se reinicia con `scene`/`hide`; anclas de `xalign`/`xpos` y posicion inicial de los `show` con ATL como Ren'Py; tamano real de imagenes con `im.FactorScale`/`im.Crop`.
+- `scene X:` con bloque ATL (zoom, blur, xoffset; extras de RAYmba) se pre-renderiza encuadrado; `xsize`/`ysize`/`size` se toman como zoom y la alineacion usa el tamano ya escalado.
+- Resultado: diferencia media por cuadro 0.01-0.04 en todas las corridas; lo que queda por encima de 0.30 son casi siempre capturas de Ren'Py a mitad de una animacion (destellos, Pan, salidas).
+
+Pendiente:
+- Ren'Py conserva/reinicia el ATL de forma distinta cuando se cambia la imagen a mitad de una animacion (acuario de 12D: Fang queda en 0.68 en Ren'Py y en 0.8 en la PS1).
+- Videollamada del telefono (13C): la composicion de la mano y la pantalla no coincide.
+- Dimmer al 40% se aproxima con 50% (mezcla de la GPU).
+
 ## 2026-10-08 - Fase 4 (pipeline de imagenes)
 Hecho:
 - `tools/images/render.py` y `convert.py`: recetas -> IMG1 (8 bits, LZ4), paletas por carpeta, recorte de zona visible, alfa tramado, media resolucion para imagenes enormes.

@@ -29,8 +29,8 @@ ATL_SOUND_FUNCTIONS = {
     "fang_kicks_a_car_workaround_sfx_fuck_renpy": ("audio/effects/carKick1.ogg", "audio/effects/carKick2.ogg"),
 }
 MAX_REPEAT = 40
-IGNORED_PROPS = {"rotate_pad", "transform_anchor", "subpixel", "perspective", "anchor", "around", "alignaround", "blur", "clockwise", "counterclockwise",
-                 "circles", "knot", "crop", "size", "xsize", "ysize", "fit", "xoffset", "yoffset", "xysize", "events",
+IGNORED_PROPS = {"rotate_pad", "transform_anchor", "subpixel", "perspective", "anchor", "around", "alignaround", "clockwise", "counterclockwise",
+                 "circles", "knot", "crop", "fit", "xysize", "events",
                  "additive", "offset", "xpan", "ypan", "delay", "yzoom"}
 def split_tokens(text):
     """Separa por espacios en el nivel 0 de parentesis (los valores pueden ser tuplas o llamadas)."""
@@ -118,6 +118,8 @@ class State:
         self.xanchor, self.yanchor = DEFAULT_ALIGN   # Ren'Py: xalign v fija xpos = v y xanchor = v
         self.alpha, self.zoom, self.xzoom, self.rotate = 1.0, 1.0, 1.0, 0.0
         self.yzoom = 1.0
+        self.xoffset = self.yoffset = 0.0       # pixeles de 1920x1080 sumados a la posicion
+        self.blur = 0.0                         # solo se usa en los fondos pre-renderizados (`scene X: blur 8`)
         self.reveal = None
         self.tint = (1.0, 1.0, 1.0)
 
@@ -128,13 +130,16 @@ class State:
 
     def effective(self):
         """(xalign, yalign) equivalentes, para guardarlos en la tabla."""
-        def conv(align, pos, anchor, size, screen):
-            if pos is None:
+        def conv(align, pos, anchor, size, screen, offset):
+            if pos is None and not offset:
                 return align
+            if pos is None:
+                pos, anchor = align * screen, align
             room = screen - size
-            return (pos - anchor * size) / room if abs(room) > 1e-6 else 0.0
-        return (conv(self.xalign, self.xpos, self.xanchor, self.w, SCREEN_W),
-                conv(self.yalign, self.ypos, self.yanchor, self.h, SCREEN_H))
+            return (pos - anchor * size + offset) / room if abs(room) > 1e-6 else 0.0
+        # el motor ubica el tamano ya escalado: (pantalla - tamano * zoom) * align
+        return (conv(self.xalign, self.xpos, self.xanchor, self.w * self.zoom, SCREEN_W, self.xoffset),
+                conv(self.yalign, self.ypos, self.yanchor, self.h * self.zoom, SCREEN_H, self.yoffset))
 
     def values(self):
         xa, ya = self.effective()
@@ -228,6 +233,13 @@ class Compiler:
             state.xanchor, state.yanchor = state.xalign, state.yalign
         elif prop == "pos" and isinstance(value, tuple):
             state.xpos, state.ypos = px(value[0], SCREEN_W), px(value[1], SCREEN_H)
+        elif prop in ("xoffset", "yoffset", "blur") and isinstance(value, (int, float)):
+            setattr(state, prop, float(value))
+        elif prop in ("xsize", "ysize") and isinstance(value, (int, float)):
+            # tamano fijo: se expresa como zoom uniforme (el juego siempre escala proporcional)
+            state.zoom = float(value) / (state.w if prop == "xsize" else state.h)
+        elif prop == "size" and isinstance(value, tuple):
+            state.zoom = float(value[0]) / state.w
         elif prop in NUMERIC:
             setattr(state, prop, float(value))
         elif prop == "matrixcolor":

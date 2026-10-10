@@ -67,6 +67,7 @@ Ultima actualizacion: 2026-10-09
 - [x] Fondos con Pan (stairs, fanglookback, pathetic, roomthrash1): imagen completa en RAM, ventana visible en VRAM
 - [x] Modo saltar segun el plan: R1 activa/detiene, ">> Saltando", sin lecturas de CD, se detiene en texto no leido, finales y cambio de capitulo; sigue tras una decision
 - [x] Galeria: se marcan las imagenes vistas (SCENE/SHOW/MARK_SEEN) con la tabla de GAME.BIN
+- [x] Auditoria visual contra Ren'Py de todo el juego (base, 4 rutas, 10 extras): faltantes, orden de personajes, posiciones, dimmers, destellos, fondos espejados y animaciones corregidos (ver docs/bitacora.md)
 - [ ] Tu prueba: modo saltar y disco con todos los capitulos
 - Nota: RAM usada ~1.14 MB (bufer de 512 KB para fondos con Pan); revisar contra el bufer de carga en la Fase 8
 
@@ -89,3 +90,4 @@ Ultima actualizacion: 2026-10-09
 - Riesgos resueltos por diseno: D12 huecos de musica (copias seguidas + rebobinado en transiciones), D13 personajes (sin capas; solo se pre-componen fondos con texto y pantallas de telefono), D14 animaciones (zoom/giro con POLY_FT4, tinte con modulacion de color).
 - Riesgo que solo se confirma en consola real (Fase 11): duracion real del salto de busqueda del CD.
 - Estadisticas de bucles: `python tools/audio/segment_stats.py`.
+- Auditoria visual: `python -m tools.audit.capture` (Ren'Py, una instancia a la vez; ~1.5 h todo) y `python -m tools.audit.compare <carpeta>...` (hojas en `<carpeta>/report/`).
