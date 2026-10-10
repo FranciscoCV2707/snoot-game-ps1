@@ -32,7 +32,8 @@ SCALE = 6                    # 1920 / 320
 TEXT_IMAGES = {f"text{i}" for i in range(1, 10)}                 # textos de insultos (capitulo 1): legibles al doble de tamano
 NO_DITHER = TEXT_IMAGES | {"vvurm_drama_poster", "jewlcase", "fastforward"}   # imagenes con texto: sin tramado
 SCALE_OVERRIDE = {"ui logo": 3, **{name: 3 for name in TEXT_IMAGES}}   # el logo del titulo se dibuja mas grande (pantalla completa de 320x240)
-HALF_AREA = 90000            # sprites de mas de ~90000 pixeles se guardan a media resolucion
+TEXT_MAX_W = 300             # los insultos salen en xalign 0.2-0.8: tienen que caber en la pantalla
+HALF_AREA = 90000           # sprites de mas de ~90000 pixeles se guardan a media resolucion
 MAX_SPRITE_ROWS = 256       # una imagen no puede cruzar la fila 256 de VRAM: los mas altos van a media resolucion
 DITHER_STRENGTH = 2
 KIND_BG, KIND_SPRITE, KIND_SOLID, KIND_EMPTY = 0, 1, 2, 3
@@ -46,6 +47,24 @@ def uniform_translucent(alpha):
     """Alfa parejo y a medias en todo lo visible (como el grano de pelicula): se ve mejor mezclado que tramado."""
     body = alpha[alpha > 24].astype(np.float32)
     return body.size > 0 and 64 <= float(body.mean()) <= 210 and float(body.std()) < 25
+
+
+def crisp_text(img, size):
+    """Texto blanco con sombra difusa -> texto nitido con contorno negro de 1 pixel. La sombra difusa se convertia en
+    una franja tramada que no dejaba leer el texto."""
+    arr = np.asarray(img.convert("RGBA")).astype(np.float32) / 255
+    cover = np.clip((arr[..., :3].mean(axis=2) - 0.5) * 2, 0, 1) * arr[..., 3]   # solo lo claro (el texto)
+    small = Image.fromarray((cover * 255).astype(np.uint8), "L").resize(size, Image.LANCZOS)
+    v = np.asarray(small).astype(np.float32) / 255
+    core = np.pad(v > 0.2, 1)
+    h, w = v.shape
+    outline = np.zeros((h, w), bool)
+    for dy in range(3):
+        for dx in range(3):
+            outline |= core[dy:dy + h, dx:dx + w]
+    gray = (np.clip(v * 1.4, 0, 1) * 255).astype(np.uint8)
+    out = np.dstack([gray, gray, gray, np.where(outline, 255, 0).astype(np.uint8)])
+    return Image.fromarray(out, "RGBA")
 
 
 def to555(rgb):
@@ -98,13 +117,18 @@ def phase1_run(task):
     ow, oh = img.size
     alpha = np.asarray(img.split()[3])
     opaque = float((alpha >= 250).mean()) >= 0.97    # fondos con algun pixel semitransparente se aplanan sobre negro
+    if name in TEXT_IMAGES:
+        scale = max(scale, ow / TEXT_MAX_W)
     w, h = max(1, round(ow / scale)), max(1, round(oh / scale))
     kind = KIND_BG if (opaque and ow >= 1000 and not has_videoframe(recipe)) else KIND_SPRITE
     if kind == KIND_BG:
         flat = Image.new("RGBA", img.size, (0, 0, 0, 255))
         flat.alpha_composite(img)
         img = flat
-    small = img.convert("RGBa").resize((w, h), Image.LANCZOS).convert("RGBA")
+    if name in TEXT_IMAGES:
+        small = crisp_text(img, (w, h))
+    else:
+        small = img.convert("RGBa").resize((w, h), Image.LANCZOS).convert("RGBA")
     ox = oy = 0
     if kind == KIND_SPRITE and visible:
         # solo se conserva la zona que llega a verse en pantalla segun el compilador
