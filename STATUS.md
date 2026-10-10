@@ -1,8 +1,8 @@
 # STATUS
 
-Ultima actualizacion: 2026-10-09
+Ultima actualizacion: 2026-10-10
 
-## Fase actual: 10 (pruebas) para sacar la v0.1 a probadores; Fases 8 y 9 hechas
+## Fase actual: 10 (pruebas); disco v0.1 listo para probadores, falta tu prueba con sonido en DuckStation
 
 ## Hecho
 ### Fase 0 - Entorno (terminada)
@@ -82,13 +82,21 @@ Ultima actualizacion: 2026-10-09
 
 ### Fase 10 - Pruebas (en curso)
 - [x] `python -m tools.engine.playtest`: recorre en autoplay la historia, las 4 rutas y los 10 extras; reporte en build/reports/playtest.md
-- [ ] Revisar el reporte y corregir lo que aparezca
-- [ ] `python -m tools.release 0.1` -> dist/SnootGamePS1-v0.1.zip para probadores
+- [x] Reporte revisado: las 15 corridas llegan al final sin errores de la VM ni de lectura del CD
+- [x] Corregido tras tu prueba: rayas verticales en DuckStation (bit de mascara), sprites de RAYmba muy altos (media resolucion), chat del capitulo 4 con flechas y "Presiona X para continuar"
+- [x] Fluidez: disolver continuo y fundidos a negro reales (brillo de texturas en vez de pasos)
+- [x] Cargas (D7): tabla de sectores FILES.BIN, una sola pausa de la musica por paso del guion y precarga de las imagenes siguientes en un cache de RAM de 320 KB
+- [x] `python -m tools.release 0.1` -> dist/SnootGamePS1-v0.1.zip (168 MB) con todo lo anterior
+- [ ] Tu prueba en DuckStation con sonido (que la musica no se corte entre escenas)
+- Conocido: en la ruta 3 hay 34 cuadros (grano y video del telefono) que no caben en VRAM; se muestra la imagen base
+- Conocido: Fang en el acuario de 12D, videollamada de 13C y dimmer del 40% (se usa 50%) no son identicos a Ren'Py
+- Nota: RAM usada ~1.6 MB de 2 MB
 
 ## Siguiente
-- [ ] Tu prueba en DuckStation (sonido incluido) y luego la v0.1 para probadores
-- [ ] Fase 11 - Pulido, hardware real y distribucion (con lo que reporten los probadores)
-- [ ] Opcional: tabla de sectores precalculada y paquetes de carga contiguos (hoy se usa CdSearchFile)
+- [ ] Repartir la v0.1 a probadores y corregir lo que reporten
+- [ ] Pulido opcional: fundido de la caja de texto, movimientos lentos de sprites mas suaves
+- [ ] Fase 11 - Hardware real (tiempo de busqueda del CD, memory card fisica) y distribucion
+- [ ] Despues de la v0.1: herramientas genericas Ren'Py -> PS1 (docs/plan-renpy2psx.md)
 
 ## Notas
 - mkpsxiso 2.10 no admite rutas absolutas de Windows en el XML; usar rutas relativas (ver docs/entorno.md).
