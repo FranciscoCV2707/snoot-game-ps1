@@ -300,19 +300,50 @@ static void bg_align(int *xa, int *ya)
 	*ya += (((int16_t)rd16(k1 + 4) - y0) * 256 * (t - t0)) / (t1 - t0);
 }
 
+static int sprite_before(const VmSprite *a, const VmSprite *b)
+{
+	return a->z != b->z ? a->z < b->z : a->born < b->born;
+}
+
+/* Sprites visibles ordenados de atras (0) hacia adelante */
+static int scene_order(const VmSprite **order)
+{
+	int n = 0, i, j;
+
+	for (i = 0; i < VM_MAX_SPRITES; i++)
+		if (vm.sprites[i].used && vm.sprites[i].image) {
+			for (j = n; j > 0 && sprite_before(&vm.sprites[i], order[j - 1]); j--)
+				order[j] = order[j - 1];
+			order[j] = &vm.sprites[i];
+			n++;
+		}
+	return n;
+}
+
+/* Imagen opaca que cubre toda la vista: lo que queda detras no se carga ni se dibuja */
+static int covers_view(const Image *img, const VmSprite *s)
+{
+	return img->kind == 0 && !img->big && !s->anim && img->x == 0 && img->y == 0 &&
+	       img->w >= SCREEN_W && img->h >= VIEW_H && img->full_w == img->w && img->full_h == img->h;
+}
+
 static void scene_sync(void)
 {
-	int i;
+	const VmSprite *order[VM_MAX_SPRITES];
+	int rank;
 
 	if (!scene_dirty || skip_mode)
 		return;                  /* al saltar no se lee el CD: la escena se carga una vez al detenerse */
 	scene_dirty = 0;
 	res_new_scene();
+	for (rank = scene_order(order) - 1; rank >= 0; rank--) {
+		const Image *img = res_get(order[rank]->image);
+
+		if (img && covers_view(img, order[rank]))
+			return;
+	}
 	if (vm.bg)
 		res_get(vm.bg);
-	for (i = 0; i < VM_MAX_SPRITES; i++)
-		if (vm.sprites[i].used && vm.sprites[i].image)
-			res_get(vm.sprites[i].image);
 }
 
 /* Imagen para dibujar: al saltar solo lo que ya esta en VRAM */
@@ -321,16 +352,8 @@ static const Image *scene_image(int id)
 	return skip_mode ? res_peek(id) : res_get(id);
 }
 
-static int sprite_before(const VmSprite *a, const VmSprite *b)
+static void draw_bg(void)
 {
-	return a->z != b->z ? a->z < b->z : a->born < b->born;
-}
-
-static void draw_scene(void)
-{
-	const VmSprite *order[VM_MAX_SPRITES];
-	int n = 0, i, j, rank;
-
 	if (vm.bg) {
 		const Image *bg = scene_image(vm.bg);
 
@@ -348,13 +371,14 @@ static void draw_scene(void)
 				img_draw(bg, LAYER_BG, bx, by);
 		}
 	}
-	for (i = 0; i < VM_MAX_SPRITES; i++)
-		if (vm.sprites[i].used && vm.sprites[i].image) {
-			for (j = n; j > 0 && sprite_before(&vm.sprites[i], order[j - 1]); j--)
-				order[j] = order[j - 1];
-			order[j] = &vm.sprites[i];
-			n++;
-		}
+}
+
+static void draw_scene(void)
+{
+	const VmSprite *order[VM_MAX_SPRITES];
+	int n = scene_order(order), rank;
+
+	/* de adelante hacia atras: al llegar a una imagen que tapa toda la vista no hace falta seguir */
 	for (rank = n - 1; rank >= 0; rank--) {
 		const VmSprite *s = order[rank];
 		const Image *img = scene_image(s->image);
@@ -370,7 +394,12 @@ static void draw_scene(void)
 		else
 			img_draw_flip(img, layer, ((SCREEN_W - img->full_w) * xa) / 256,
 			              VIEW_Y + ((VIEW_H - img->full_h) * ya) / 256, s->flags & 1);
+		if (covers_view(img, s)) {
+			video_clip_scene();
+			return;
+		}
 	}
+	draw_bg();
 	video_clip_scene();
 }
 

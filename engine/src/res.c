@@ -184,15 +184,22 @@ static const Image *load_image(int image_id)
 	memset(e, 0, sizeof(*e));
 	e->clut_bit = -1;
 	e->id = image_id;
-	e->region = (uint8_t)region;
 	e->last_use = clock_now;
 
 	if (kind <= 1 && w > 0) {
-		while (!find_rect(region, gw, gh, &gx, &gy))
+		/* lo que no entra en su zona (sprites o fondos) usa el hueco libre de la otra antes de desalojar */
+		for (;;) {
+			if (find_rect(region, gw, gh, &gx, &gy))
+				break;
+			if (find_rect(1 - region, gw, gh, &gx, &gy)) {
+				region = 1 - region;
+				break;
+			}
 			if (!evict_one()) {
 				printf("res: sin espacio en VRAM para %s\n", path);
 				return 0;
 			}
+		}
 		e->clut_bit = take_clut();
 		while (e->clut_bit < 0 && evict_one())
 			e->clut_bit = take_clut();
@@ -201,6 +208,7 @@ static const Image *load_image(int image_id)
 			return 0;
 		}
 		e->has_cells = 1;
+		e->region = (uint8_t)region;
 		e->gx = gx;
 		e->gy = gy;
 		e->gw = gw;

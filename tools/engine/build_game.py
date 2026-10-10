@@ -1,7 +1,7 @@
 """Construye un disco jugable con los capitulos elegidos: engine/ -> build/engine/snoot_game.bin/.cue.
 
 Incluye los guiones, los textos y solo las imagenes que esos capitulos usan (la construccion final del CD es de la Fase 9).
-Uso: python -m tools.engine.build_game [--chapters 0,1] [--start chapter_1]
+Uso: python -m tools.engine.build_game [--chapters all|0,1] [--start story|chapter_1]
 """
 import argparse
 import os
@@ -101,14 +101,21 @@ def text_block(raw, index):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--chapters", default="0")
-    ap.add_argument("--start", default="chapter_1")
+    ap.add_argument("--chapters", default="all", help="indices separados por coma, o all")
+    ap.add_argument("--start", default="story", help="story (la historia completa, capitulo tras capitulo) o una etiqueta")
     args = ap.parse_args()
 
     program = Program(DATA)
     meta = program.meta
-    entry = meta["entries"][args.start]
-    chapters = sorted({int(c) for c in args.chapters.split(",")} | {entry["chapter"]})
+    if args.start == "story":
+        entry = {"chapter": program.story_index, "offset": 0}
+    else:
+        entry = meta["entries"][args.start]
+    if args.chapters == "all":
+        wanted = set(range(len(program.chapters)))
+    else:
+        wanted = {int(c) for c in args.chapters.split(",")}
+    chapters = sorted(wanted | {entry["chapter"]})
     raw_text = (DATA / "TEXT_ES.BIN").read_bytes()
 
     WORK.mkdir(parents=True, exist_ok=True)

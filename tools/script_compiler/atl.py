@@ -71,9 +71,10 @@ def recipe_size(recipe):
         return tuple(float(v) for v in recipe["size"])
     if recipe and recipe.get("op") == "file":
         from PIL import Image
-        from tools.script_compiler.project import GAME
+        from tools.images.render import find_file
         try:
-            with Image.open(GAME / recipe["path"]) as im:
+            # la ruta puede ir relativa a images/ (como la busca Ren'Py)
+            with Image.open(find_file(recipe["path"])) as im:
                 return float(im.width), float(im.height)
         except OSError:
             pass
