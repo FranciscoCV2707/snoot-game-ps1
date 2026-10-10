@@ -13,7 +13,7 @@ static int script_count;
 #define SCRIPT_QUIT 0xFFFE
 #define SCRIPT_AUTOPLAY 0xFFFD
 volatile uint32_t autotest_shot, autotest_quit, autotest_autoplay;
-static uint8_t script_done[700];
+static uint8_t script_done[2800];
 static int script_base = -1;
 
 void input_init(void)

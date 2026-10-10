@@ -1615,8 +1615,25 @@ static void draw_scroll(void)
 			img_draw(img, LAYER_SPRITE0, 0, VIEW_Y + i * VIEW_H - off);
 	}
 	video_clip_scene();
-	font_draw(LAYER_TEXT, 8, SCREEN_H - 24, scroll_pos ? "Arriba/abajo: leer (R1 rapido)" : "X: cerrar el chat",
-	          128, 128, 128);
+	if (scroll_count > 1) {
+		/* barra de posicion a la derecha */
+		int total = scroll_count * VIEW_H, max = total - VIEW_H, th = VIEW_H * VIEW_H / total;
+
+		if (th < 10)
+			th = 10;
+		video_rect(LAYER_TEXT, SCREEN_W - 7, VIEW_Y + (VIEW_H - th) * scroll_pos / max, 5, th, 170, 170, 170, 0);
+		video_rect(LAYER_TEXT, SCREEN_W - 7, VIEW_Y, 5, VIEW_H, 40, 40, 40, 0);
+	}
+	draw_center(8, "Mensajes de Fang", 255, 220, 40);
+	if (scroll_pos == 0) {
+		/* se llego al final del chat (arriba, donde el original tenia el boton): aviso para continuar */
+		if ((video_frames() / 20) & 1)
+			video_triangle_down(LAYER_TEXT, (SCREEN_W - font_width("Presiona X para continuar")) / 2 - 16, SCREEN_H - 20, 10, 7,
+			                    255, 220, 40);
+		draw_center(SCREEN_H - 24, "Presiona X para continuar", 255, 220, 40);
+	} else {
+		draw_center(SCREEN_H - 24, "Arriba/abajo: desplazar el chat   R1: rápido", 128, 128, 128);
+	}
 }
 
 /* Creditos: suben solos (X los acelera) y al final vuelve el guion */
@@ -1789,7 +1806,7 @@ int main(int argc, const char *argv[])
 		save_set_icon(file_buf);
 	{
 		/* prueba automatica: solo existe en los discos de prueba (tools/engine/emutest.py) */
-		static uint8_t autotest[4096] __attribute__((aligned(4)));
+		static uint8_t autotest[16384] __attribute__((aligned(4)));
 		int lba, size;
 
 		if (cd_find("\\DATA\\AUTOTEST.BIN", &lba, &size) == 0 && size <= (int)sizeof(autotest) &&
@@ -1851,7 +1868,7 @@ int main(int argc, const char *argv[])
 		eat_cross = 0;
 		if (!in_game) {
 			/* en los menus no se salta */
-		} else if (input_pressed(PAD_R1)) {
+		} else if (input_pressed(PAD_R1) && state != ST_SCROLL) {   /* en el chat R1 solo acelera */
 			skip_mode = !skip_mode;
 		} else if (skip_mode && state != ST_MENU && input_pressed(PAD_CROSS)) {
 			skip_mode = 0;

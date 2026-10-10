@@ -33,7 +33,7 @@ X avanza o completa el texto y confirma, O vuelve, Start abre la pausa (en una l
 - Datos (main.c, seccion guardado): volumenes, finales, extras terminados, galeria vista, texto leido y 3 ranuras (capitulo, instruccion del SAY o MENU, variables, llamadas, escena, musica y ambientes, tiempo).
 - Se guarda al elegir Guardar, al ver un final por primera vez, al terminar una partida, al salir al titulo y al cambiar las opciones.
 - Capitulos extra con la logica de `ex_ch_menu` del original (D1): segun los finales vistos y los extras terminados.
-- `SPECIAL 1` (chat del capitulo 4): la imagen `texts` en espanol en tiras de 320x180 (`ui textscroll N`, 0.4x del original); empieza abajo, se lee con arriba/abajo y X la cierra al llegar arriba (como el boton del original).
+- `SPECIAL 1` (chat del capitulo 4): la imagen `texts` en espanol en tiras de 320x180 (`ui textscroll N`, 0.4x del original); empieza abajo (lo mas reciente), se desplaza con arriba/abajo (R1 rapido) con barra de posicion; al llegar arriba (donde el original tenia el boton) aparece "Presiona X para continuar".
 - `SPECIAL 2` (creditos): las lineas de `credits.rpy` traducidas suben por la pantalla; X acelera.
 
 ## Prueba automatica

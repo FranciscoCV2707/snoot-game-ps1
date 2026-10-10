@@ -4,7 +4,7 @@ corre sin interfaz tomando las capturas que el guion pide.
 No usa el teclado ni la pantalla de la PC, asi que se puede correr mientras se usa la computadora. Los cuadros se
 cuentan con VSync desde que aparece el titulo (el motor los cuenta), asi que no dependen de cuanto tarde el arranque.
 
-Pasos: "cuadro accion [argumento]" separados por ";". Acciones: press BOTON, shot NOMBRE, quit, autoplay (el motor
+Pasos: "cuadro accion [argumento]" separados por ";". Acciones: press BOTON, hold BOTON CUADROS, shot NOMBRE, quit, autoplay (el motor
 avanza solo y cierra el emulador al volver al titulo o ante un error).
 Botones: CROSS, CIRCLE, SQUARE, TRIANGLE, START, SELECT, UP, DOWN, LEFT, RIGHT, L1, R1, L2, R2.
 Ejemplo: python -m tools.engine.emutest --steps "300 shot titulo; 320 press CROSS; 900 shot juego; 910 quit"
@@ -77,11 +77,17 @@ end)
 
 
 def parse_steps(text):
+    """`hold BOTON N` mantiene el boton N cuadros (una pulsacion por cuadro)."""
     out = []
     for part in text.split(";"):
         words = part.split()
-        if words:
-            out.append((int(words[0]), words[1], words[2] if len(words) > 2 else ""))
+        if not words:
+            continue
+        frame = int(words[0])
+        if words[1] == "hold":
+            out += [(frame + k, "press", words[2]) for k in range(int(words[3]))]
+        else:
+            out.append((frame, words[1], words[2] if len(words) > 2 else ""))
     return sorted(out, key=lambda s: s[0])
 
 
