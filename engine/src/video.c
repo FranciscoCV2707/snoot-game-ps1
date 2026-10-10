@@ -67,7 +67,8 @@ void video_set_tpage(int layer, int mode, int abr, int x, int y)
 	video_add(layer, tp);
 }
 
-void video_rect(int layer, int x, int y, int w, int h, int r, int g, int b, int semi_trans)
+/* blend: 0 opaco; si no, modo de mezcla de la GPU + 1 (1 = 50%, 2 = suma, 3 = resta, 4 = suma de 1/4) */
+void video_rect(int layer, int x, int y, int w, int h, int r, int g, int b, int blend)
 {
 	TILE *t = (TILE *)video_alloc(sizeof(TILE));
 
@@ -77,10 +78,10 @@ void video_rect(int layer, int x, int y, int w, int h, int r, int g, int b, int 
 	setXY0(t, x, y);
 	setWH(t, w, h);
 	setRGB0(t, r, g, b);
-	setSemiTrans(t, semi_trans);
+	setSemiTrans(t, blend != 0);
 	video_add(layer, t);
-	if (semi_trans)
-		video_set_tpage(layer, 0, 0, 0, 0);     /* mezcla 50% */
+	if (blend)
+		video_set_tpage(layer, 0, blend - 1, 0, 0);
 }
 
 /* Triangulo relleno apuntando hacia abajo (indicador de "presiona X"), dibujado con una primitiva en vez de un glifo */

@@ -13,6 +13,7 @@
 #define OP_MARK_SEEN 0x15
 #define OP_CAMERA 0x16
 #define OP_BACKGROUND 0x17
+#define OP_ORDER 0x18
 #define OP_MUSIC_PLAY 0x20
 #define OP_MUSIC_STOP 0x21
 #define OP_AMBIENT_PLAY 0x22
@@ -63,6 +64,7 @@ static const OpInfo *op_info(int code)
 	case OP_MARK_SEEN: { static const OpInfo i = { "MARK_SEEN", "H", 1 }; return &i; }
 	case OP_CAMERA: { static const OpInfo i = { "CAMERA", "HhhHB", 5 }; return &i; }
 	case OP_BACKGROUND: { static const OpInfo i = { "BACKGROUND", "H", 1 }; return &i; }
+	case OP_ORDER: { static const OpInfo i = { "ORDER", "BBB", 3 }; return &i; }
 	case OP_MUSIC_PLAY: { static const OpInfo i = { "MUSIC_PLAY", "HBB", 3 }; return &i; }
 	case OP_MUSIC_STOP: { static const OpInfo i = { "MUSIC_STOP", "B", 1 }; return &i; }
 	case OP_AMBIENT_PLAY: { static const OpInfo i = { "AMBIENT_PLAY", "BHB", 3 }; return &i; }

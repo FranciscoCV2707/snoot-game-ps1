@@ -23,6 +23,8 @@ int img_load(Image *img, const uint8_t *file, int file_size, int vram_x, int vra
 void img_draw(const Image *img, int layer, int screen_x, int screen_y);
 /* Igual que img_draw; flip espeja la imagen completa (SHOW con el bit de espejo). */
 void img_draw_flip(const Image *img, int layer, int screen_x, int screen_y, int flip);
+/* Con zoom (1/64) y modulacion de color (128 = sin cambio); el origen logico ya escalado va en (screen_x, screen_y). */
+void img_draw_ex(const Image *img, int layer, int screen_x, int screen_y, int flip, int zoom, int r, int g, int b);
 
 /* Fondos que se recorren con Pan (mas grandes que la VRAM libre): la imagen completa se descomprime en RAM y a
  * VRAM, en (vram_x, vram_y), solo sube la ventana de BIG_WIN_W x BIG_WIN_H visible. Solo uno a la vez. */

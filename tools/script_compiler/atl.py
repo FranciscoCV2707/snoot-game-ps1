@@ -64,9 +64,30 @@ def curve_for(warper):
 
 
 def recipe_size(recipe):
-    """Tamano en pixeles originales de una receta de imagen (1920x1080 si no se sabe)."""
-    while recipe and recipe.get("op") == "effect" and recipe.get("src"):
-        recipe = recipe["src"]
+    """Tamano en pixeles originales de una receta de imagen (1920x1080 si no se sabe). Aplica los efectos que cambian
+    el tamano igual que tools/images/render.py (im.FactorScale, im.Scale, im.Crop, Transform con zoom o tamano)."""
+    if recipe and recipe.get("op") == "effect" and recipe.get("src"):
+        w, h = recipe_size(recipe["src"])
+        name, args, kw = recipe["effect"], recipe.get("args", []), recipe.get("kwargs", {})
+        if name == "im.FactorScale":
+            fx = float(args[0])
+            return float(round(w * fx)), float(round(h * (float(args[1]) if len(args) > 1 else fx)))
+        if name == "im.Scale":
+            return float(args[0]), float(args[1])
+        if name == "im.Crop":
+            rect = args[0] if isinstance(args[0], (list, tuple)) else args[:4]
+            return float(rect[2]), float(rect[3])
+        if name == "Transform":
+            xs, ys, zoom = kw.get("xsize"), kw.get("ysize"), kw.get("zoom")
+            if zoom:
+                return float(round(w * zoom)), float(round(h * zoom))
+            if xs and ys:
+                return float(xs), float(ys)
+            if xs:
+                return float(xs), float(round(h * xs / w))
+            if ys:
+                return float(round(w * ys / h)), float(ys)
+        return w, h
     if recipe and recipe.get("op") == "composite" and recipe.get("size"):
         return tuple(float(v) for v in recipe["size"])
     if recipe and recipe.get("op") == "file":

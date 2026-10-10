@@ -35,6 +35,7 @@ void vm_init(Vm *vm, const VmHost *host)
 {
 	memset(vm, 0, sizeof(*vm));
 	vm->host = host;
+	vm->rng = 12345;
 }
 
 int vm_start(Vm *vm, int chapter, uint32_t entry)
@@ -123,9 +124,60 @@ static void scene_show(Vm *vm, const int32_t *a)
 	}
 	s->image = (uint16_t)a[1];
 	/* 254 = conservar posicion y animacion; 255 (sin "at") en un sprite que ya estaba tambien las conserva, como Ren'Py */
-	if (a[2] != 254 && !(a[2] == 255 && existing && a[5] == 0))
-		s->pos = (uint8_t)a[2], s->anim = (uint16_t)a[5];
+	if (a[2] != 254 && !(a[2] == 255 && existing && a[5] == 0)) {
+		s->pos = (uint8_t)a[2];
+		s->anim = (uint16_t)a[5];
+		s->shown_at = vm->now;
+	}
 	s->flags = (uint8_t)a[4];
+}
+
+static int vm_random(Vm *vm, int n)
+{
+	vm->rng = vm->rng * 1103515245u + 12345u;
+	return (int)((vm->rng >> 16) % (uint32_t)n);
+}
+
+/* showCG(): una de `count` imagenes desde `first` en una alineacion al azar entre 0.2 y 0.8 (randPosition) */
+static void scene_show_random(Vm *vm, const int32_t *a)
+{
+	int32_t show[6];
+	VmSprite *s;
+
+	show[0] = a[0];
+	show[1] = a[1] + vm_random(vm, a[2]);
+	show[2] = 255;
+	show[3] = VM_Z_KEEP;
+	show[4] = VM_SPRITE_RANDOM;
+	show[5] = 0;
+	scene_show(vm, show);
+	s = vm_sprite(vm, a[0]);
+	if (s) {
+		s->anim = 0;
+		s->shown_at = vm->now;
+		s->rx = (int16_t)(51 + vm_random(vm, 154));
+		s->ry = (int16_t)(51 + vm_random(vm, 154));
+	}
+}
+
+/* `show tag behind ref` de Ren'Py: tag pasa justo detras de ref si estaba por encima (con above, justo encima). */
+static void scene_order(Vm *vm, int tag, int ref, int above)
+{
+	VmSprite *s = vm_sprite(vm, tag), *r = vm_sprite(vm, ref);
+	uint32_t at;
+	int i;
+
+	if (!s || !r || s == r)
+		return;
+	if (!above && (s->z < r->z || (s->z == r->z && s->born < r->born)))
+		return;
+	at = above ? r->born + 1 : r->born;
+	for (i = 0; i < VM_MAX_SPRITES; i++)
+		if (vm->sprites[i].used && vm->sprites[i].born >= at)
+			vm->sprites[i].born++;
+	vm->born_counter++;
+	s->born = at;
+	s->z = r->z;
 }
 
 VmEvent vm_run(Vm *vm)
@@ -223,6 +275,12 @@ VmEvent vm_run(Vm *vm)
 			break;
 		case OP_SHOW:
 			scene_show(vm, a);
+			break;
+		case OP_ORDER:
+			scene_order(vm, a[0], a[1], a[2]);
+			break;
+		case OP_SHOW_RANDOM:
+			scene_show_random(vm, a);
 			break;
 		case OP_HIDE: {
 			VmSprite *s = vm_sprite(vm, a[0]);

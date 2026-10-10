@@ -165,11 +165,17 @@ void img_draw_big(const Image *img, int layer, int screen_x, int screen_y)
 
 void img_draw(const Image *img, int layer, int screen_x, int screen_y)
 {
-	img_draw_flip(img, layer, screen_x, screen_y, 0);
+	img_draw_ex(img, layer, screen_x, screen_y, 0, 64, 128, 128, 128);
 }
 
-/* Cada pieza cabe en una pagina de textura de 256 px; el origen en VRAM puede caer en cualquier palabra */
 void img_draw_flip(const Image *img, int layer, int screen_x, int screen_y, int flip)
+{
+	img_draw_ex(img, layer, screen_x, screen_y, flip, 64, 128, 128, 128);
+}
+
+/* Cada pieza cabe en una pagina de textura de 256 px; el origen en VRAM puede caer en cualquier palabra.
+ * Con espejo o zoom cada pieza es un POLY_FT4 (la GPU escala la textura); si no, un SPRT. */
+void img_draw_ex(const Image *img, int layer, int screen_x, int screen_y, int flip, int zoom, int r, int g, int b)
 {
 	int col = 0;
 
@@ -184,17 +190,19 @@ void img_draw_flip(const Image *img, int layer, int screen_x, int screen_y, int 
 
 		if (piece_w > 256 - u)
 			piece_w = 256 - u;
-		if (flip) {
+		if (flip || zoom != 64) {
 			POLY_FT4 *p = (POLY_FT4 *)video_alloc(sizeof(POLY_FT4));
-			int x = screen_x + img->full_w - (img->x + col + piece_w);
-			int y = screen_y + img->y;
+			int lx = flip ? img->full_w - (img->x + col + piece_w) : img->x + col;
+			int x0 = screen_x + lx * zoom / 64, x1 = screen_x + (lx + piece_w) * zoom / 64;
+			int y0 = screen_y + img->y * zoom / 64, y1 = screen_y + (img->y + img->h) * zoom / 64;
+			int ua = flip ? u + piece_w - 1 : u, ub = flip ? u : u + piece_w - 1;
 
 			if (!p)
 				return;
 			setPolyFT4(p);
-			setXY4(p, x, y, x + piece_w, y, x, y + img->h, x + piece_w, y + img->h);
-			setUV4(p, u + piece_w - 1, v, u, v, u + piece_w - 1, v + img->h - 1, u, v + img->h - 1);
-			setRGB0(p, 128, 128, 128);
+			setXY4(p, x0, y0, x1, y0, x0, y1, x1, y1);
+			setUV4(p, ua, v, ub, v, ua, v + img->h - 1, ub, v + img->h - 1);
+			setRGB0(p, r, g, b);
 			p->clut = getClut(0, img->clut_y);
 			p->tpage = getTPage(1, 0, page_x, img->vram_y);
 			video_add(layer, p);
@@ -207,7 +215,7 @@ void img_draw_flip(const Image *img, int layer, int screen_x, int screen_y, int 
 			setXY0(s, screen_x + img->x + col, screen_y + img->y);
 			setWH(s, piece_w, img->h);
 			setUV0(s, u, v);
-			setRGB0(s, 128, 128, 128);
+			setRGB0(s, r, g, b);
 			setClut(s, 0, img->clut_y);
 			video_add(layer, s);
 			/* la pagina de textura va antes del sprite: se agrega despues porque lo agregado despues se dibuja antes */

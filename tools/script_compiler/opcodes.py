@@ -17,6 +17,7 @@ OPS = {
     "MARK_SEEN": (0x15, "H", ("image",)),
     "CAMERA": (0x16, "HhhHB", ("zoom", "tx", "ty", "time", "curve")),   # zoom 1/256; tx, ty en pixeles de 1920x1080 ya escalados
     "BACKGROUND": (0x17, "H", ("image",)),                              # cambia solo el fondo (sin borrar sprites)
+    "ORDER": (0x18, "BBB", ("tag", "ref", "above")),                    # mueve tag justo detras (o encima) de ref
     "MUSIC_PLAY": (0x20, "HBB", ("track", "fade", "flags")),
     "MUSIC_STOP": (0x21, "B", ("fade",)),
     "AMBIENT_PLAY": (0x22, "BHB", ("slot", "sound", "fade")),

@@ -598,8 +598,9 @@ class Lowerer:
         patched = bool(spec and spec.get("patch"))
         anim, final = atl_module.compile_anim(self, n, extra_transforms, slideshow=None if patched else spec)
         flags = FLAG_FLIP if flip else 0
-        self.emit("SHOW", n.line, tag=self.reg.tag(n.tag), image=iid, pos=pos, z=z, flags=flags, anim=anim)
+        self.emit("SHOW", n.line, tag=self.reg.tag(n.tag), image=iid, pos=pos, z=self.zorder(n), flags=flags, anim=anim)
         shown = self.ir.insts[-1] if not self.dry else None
+        self.emit_behind(n, state)
         if patched:
             self.show_patch(n, state, spec, pos, z)
         self.track_visibility(n.tag, iid, pos, anim, bool(flip))
@@ -612,6 +613,21 @@ class Lowerer:
             self.transition(n.with_, n)
         return state
 
+    @staticmethod
+    def zorder(n):
+        """z del SHOW: el `zorder` explicito o Z_KEEP (el orden lo lleva el motor: lo nuevo va encima, como Ren'Py)."""
+        return Z_KEEP if getattr(n, "zorder", None) is None else max(-100, min(120, n.zorder))
+
+    def emit_behind(self, n, state):
+        """`behind a, b`: ORDER por cada referencia deja el tag detras de la mas baja. Sus companeros lo siguen."""
+        for ref in n.behind:
+            ref = ref.split()[-1] if ref else None
+            if ref and ref != n.tag:
+                self.emit("ORDER", n.line, tag=self.reg.tag(n.tag), ref=self.reg.tag(ref), above=0)
+        if n.behind:
+            for companion in state.comp.get(n.tag, []):
+                self.emit("ORDER", n.line, tag=self.reg.tag(companion), ref=self.reg.tag(n.tag), above=1)
+
     def show_patch(self, n, state, spec, pos, z):
         """Video como parches: segundo sprite (tag~patch) encima de la imagen base, que cambia de parche con el tiempo."""
         import types
@@ -622,7 +638,8 @@ class Lowerer:
         self.reg.last_key[ptag] = pkey
         panim, _ = atl_module.compile_anim(self, node, [], slideshow=spec)
         pz = Z_KEEP if z == Z_KEEP else min(120, z + 1)
-        self.emit("SHOW", n.line, tag=self.reg.tag(ptag), image=piid, pos=pos, z=pz, flags=0, anim=panim)
+        self.emit("SHOW", n.line, tag=self.reg.tag(ptag), image=piid, pos=pos, z=self.zorder(n), flags=0, anim=panim)
+        self.emit("ORDER", n.line, tag=self.reg.tag(ptag), ref=self.reg.tag(n.tag), above=1)
         state.z[ptag] = pz if pz != Z_KEEP else state.z.get(n.tag, 0) + 1
         state.comp.setdefault(n.tag, [])
         if ptag not in state.comp[n.tag]:
@@ -723,7 +740,9 @@ class Lowerer:
         if z != Z_KEEP:
             state.z[n.tag] = z
         pos = next((self.p.positions[a] for a in node.at if a in self.p.positions), POS_NONE)
-        self.emit("SHOW", n.line, tag=self.reg.tag(n.tag), image=iid, pos=pos, z=z, flags=FLAG_FLIP if flip else 0, anim=anim)
+        self.emit("SHOW", n.line, tag=self.reg.tag(n.tag), image=iid, pos=pos, z=self.zorder(n), flags=FLAG_FLIP if flip else 0,
+                  anim=anim)
+        self.emit_behind(n, state)
         state.tags[n.tag] = {key}
         if n.with_:
             self.transition(n.with_, n)

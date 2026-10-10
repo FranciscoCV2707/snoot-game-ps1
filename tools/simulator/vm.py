@@ -103,6 +103,9 @@ class VM:
             elif name == "SHOW_RANDOM":
                 for i in range(a["count"]):
                     self.note_image(a["first"] + i)
+            elif name == "ORDER":
+                if a["tag"] in st["z"] and a["ref"] in st["z"]:
+                    st["z"][a["tag"]] = st["z"][a["ref"]]
             elif name == "HIDE":
                 st["sprites"].pop(a["tag"], None)
                 st["z"].pop(a["tag"], None)

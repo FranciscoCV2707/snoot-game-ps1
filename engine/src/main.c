@@ -13,6 +13,7 @@
 #include "input.h"
 #include "opcodes.h"
 #include "res.h"
+#include "scene.h"
 #include "text.h"
 #include "video.h"
 #include "vm.h"
@@ -242,11 +243,15 @@ static void notify(void *user, int opcode, const int32_t *args, int nargs)
 		gallery_mark(args[1]);
 		scene_dirty = 1;
 		break;
+	case OP_SHOW_RANDOM:
+		scene_dirty = 1;
+		break;
 	case OP_BACKGROUND:
 		gallery_mark(args[0]);
 		scene_dirty = 1;
 		break;
 	case OP_HIDE:
+	case OP_ORDER:
 		scene_dirty = 1;
 		break;
 	case OP_MARK_SEEN:
@@ -266,40 +271,10 @@ static void notify(void *user, int opcode, const int32_t *args, int nargs)
 }
 
 /* ---------------------------------------------------------------- escena */
-static const uint8_t *anim_data(int anim)
-{
-	if (anim <= 0 || anim > vm.ch.anim_count || !vm.ch.anims)
-		return 0;
-	return vm.ch.anims + rd32(vm.ch.anims + 4 * (anim - 1));
-}
-
-/* Posicion en 8.8 de un sprite: la de su posicion con nombre o, si no tiene, la de su animacion. */
-static void sprite_align(const VmSprite *s, int *xa, int *ya)
-{
-	const uint8_t *anim;
-
-	*xa = 128;
-	*ya = 256;                     /* posicion por defecto de Ren'Py: centrado y apoyado abajo */
-	if (s->pos < pos_count) {
-		*xa = pos_x[s->pos];
-		*ya = pos_y[s->pos];
-		return;
-	}
-	anim = anim_data(s->anim);
-	if (anim && anim[0]) {
-		/* sin animacion de verdad todavia: se usa la posicion final (o la inicial si la animacion se repite) */
-		int key = (anim[1] & 1) ? 0 : anim[0] - 1;
-		const uint8_t *k = anim + 3 + 15 * key;
-
-		*xa = (int16_t)rd16(k + 2);
-		*ya = (int16_t)rd16(k + 4);
-	}
-}
-
 /* Alineacion del fondo en el cuadro actual (8.8 desplazado 8 bits mas): interpolacion lineal entre claves (Pan). */
 static void bg_align(int *xa, int *ya)
 {
-	const uint8_t *anim = anim_data(vm.bg_anim), *k0, *k1;
+	const uint8_t *anim = scene_anim(&vm, vm.bg_anim), *k0, *k1;
 	int t = video_frames() - bg_start, n, i, t0, t1, x0, y0;
 
 	*xa = 128 << 8;                /* sin animacion: posicion por defecto de Ren'Py */
@@ -325,26 +300,6 @@ static void bg_align(int *xa, int *ya)
 	*ya += (((int16_t)rd16(k1 + 4) - y0) * 256 * (t - t0)) / (t1 - t0);
 }
 
-static int sprite_before(const VmSprite *a, const VmSprite *b)
-{
-	return a->z != b->z ? a->z < b->z : a->born < b->born;
-}
-
-/* Sprites visibles ordenados de atras (0) hacia adelante */
-static int scene_order(const VmSprite **order)
-{
-	int n = 0, i, j;
-
-	for (i = 0; i < VM_MAX_SPRITES; i++)
-		if (vm.sprites[i].used && vm.sprites[i].image) {
-			for (j = n; j > 0 && sprite_before(&vm.sprites[i], order[j - 1]); j--)
-				order[j] = order[j - 1];
-			order[j] = &vm.sprites[i];
-			n++;
-		}
-	return n;
-}
-
 /* Imagen opaca que cubre toda la vista: lo que queda detras no se carga ni se dibuja */
 static int covers_view(const Image *img, const VmSprite *s)
 {
@@ -355,15 +310,20 @@ static int covers_view(const Image *img, const VmSprite *s)
 static void scene_sync(void)
 {
 	const VmSprite *order[VM_MAX_SPRITES];
-	int rank;
+	uint16_t extra[SCENE_MAX_EVENTS];
+	int rank, i, n;
 
 	if (!scene_dirty || skip_mode)
 		return;                  /* al saltar no se lee el CD: la escena se carga una vez al detenerse */
 	scene_dirty = 0;
 	res_new_scene();
-	for (rank = scene_order(order) - 1; rank >= 0; rank--) {
+	for (rank = scene_sorted(&vm, order) - 1; rank >= 0; rank--) {
 		const Image *img = res_get(order[rank]->image);
 
+		/* las imagenes que la animacion cambia en el camino se cargan ya, para no leer el CD a mitad */
+		n = scene_event_images(&vm, order[rank], extra, SCENE_MAX_EVENTS);
+		for (i = 0; i < n; i++)
+			res_get(extra[i]);
 		if (img && covers_view(img, order[rank]))
 			return;
 	}
@@ -398,27 +358,42 @@ static void draw_bg(void)
 	}
 }
 
+static void draw_solid(int layer, const uint8_t *rgba, int alpha)
+{
+	SolidBlend sb;
+	int i;
+
+	scene_solid_blend(rgba, alpha, &sb);
+	for (i = 0; i < sb.passes; i++)
+		video_rect(layer, 0, VIEW_Y, SCREEN_W, VIEW_H, sb.r, sb.g, sb.b, sb.mode);
+}
+
 static void draw_scene(void)
 {
 	const VmSprite *order[VM_MAX_SPRITES];
-	int n = scene_order(order), rank;
+	int n = scene_sorted(&vm, order), rank;
 
 	/* de adelante hacia atras: al llegar a una imagen que tapa toda la vista no hace falta seguir */
 	for (rank = n - 1; rank >= 0; rank--) {
 		const VmSprite *s = order[rank];
-		const Image *img = scene_image(s->image);
-		int xa, ya, layer = LAYER_BG - 1 - rank;
+		const Image *img;
+		int layer = LAYER_BG - 1 - rank;
+		SpriteLook lk;
 
-		if (!img || img->kind == 3)
+		scene_look(&vm, s, skip_mode ? SCENE_SETTLED : (int)(video_frames() - s->shown_at), &lk);
+		img = scene_image(lk.image);
+		if (!img || img->kind == 3 || lk.alpha < SCENE_HIDDEN_ALPHA)
 			continue;
 		if (layer < LAYER_SPRITE0)
 			layer = LAYER_SPRITE0;
-		sprite_align(s, &xa, &ya);
-		if (img->kind == 2)
-			video_rect(layer, 0, VIEW_Y, SCREEN_W, VIEW_H, img->solid[0], img->solid[1], img->solid[2], 0);
-		else
-			img_draw_flip(img, layer, ((SCREEN_W - img->full_w) * xa) / 256,
-			              VIEW_Y + ((VIEW_H - img->full_h) * ya) / 256, s->flags & 1);
+		if (img->kind == 2) {
+			draw_solid(layer, img->solid, lk.alpha);
+		} else {
+			int w = img->full_w * lk.zoom / 64, h = img->full_h * lk.zoom / 64;
+
+			img_draw_ex(img, layer, ((SCREEN_W - w) * lk.xa) / 256, VIEW_Y + ((VIEW_H - h) * lk.ya) / 256,
+			            lk.flip, lk.zoom, lk.r, lk.g, lk.b);
+		}
 		if (covers_view(img, s)) {
 			video_clip_scene();
 			return;
@@ -514,7 +489,10 @@ static void start_say(void)
 
 static void run_vm(void)
 {
-	VmEvent ev = vm_run(&vm);
+	VmEvent ev;
+
+	vm.now = (uint32_t)video_frames();
+	ev = vm_run(&vm);
 
 	scene_sync();
 	switch (ev) {
@@ -691,6 +669,7 @@ int main(int argc, const char *argv[])
 	load_game_tables();
 	boot_stage = 3;
 	boot_screen(0);
+	scene_set_positions(pos_x, pos_y, pos_count);
 	vm_init(&vm, &host);
 	restart();
 	boot_stage = 4;

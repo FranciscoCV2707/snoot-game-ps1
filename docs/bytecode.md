@@ -61,9 +61,11 @@ Formato: `opcode u8` seguido de los argumentos. Tamaños en bytes entre parénte
 | 0x15 | `MARK_SEEN` | imagen u16 (3) | `renpy.mark_image_seen(...)` |
 | 0x16 | `CAMERA` | zoom u16 (1/256), tx s16, ty s16, tiempo u16, curva u8 (10) | `camera: linear 0.2 zoom 3.243 xpos 2510 ypos 246` (zoom y desplazamiento de toda la escena: pantalla = zoom x punto - (tx, ty), en pixeles de 1920x1080) |
 | 0x17 | `BACKGROUND` | imagen u16 (3) | cambia solo el fondo sin borrar sprites (se usa en el desenfoque de la camara) |
+| 0x18 | `ORDER` | tag u8, ref u8, above u8 (4) | `show x behind y`: x pasa justo detrás de y si estaba encima (above = 1: justo encima de y; lo usan los compañeros de un sprite, como los parches de video) |
 
 - `tag` identifica el "lugar" del sprite (anon, fang, naser, bg...). `SHOW` con un tag que ya existe lo reemplaza. Hasta 12 sprites simultáneos más el fondo (los fondos de color sólido, como `black`, `white` o `dimmer_*`, no cuentan: se dibujan como rectángulos).
-- `z` es el orden de dibujo (de `behind`): mayor se dibuja encima.
+- `z` es el `zorder` explícito de Ren'Py; sin él, `SHOW` lleva -128 (conservar). El orden dentro del mismo `z` es el de Ren'Py: lo nuevo va encima y un tag que se vuelve a mostrar conserva su lugar. `behind a, b` se compila a un `ORDER` por referencia (queda detrás de la más baja).
+- Colores sólidos con alfa (`dimmer_*` = negro al 20-53%) y sprites con alfa final parcial se dibujan con la mezcla de la GPU (50%, resta o suma de 1/4; ver `engine/src/scene.c`). Un sprite cuya animación termina con alfa < 32 no se dibuja (por ejemplo `show white: easein 1 alpha 0`).
 - `flags` de `SHOW`: bit0 volteado (`xzoom -1`/`flip`), bit1 empezar invisible. Las 245 definiciones `im.Flip(...)` del juego no generan imágenes nuevas: el compilador usa la imagen original con el bit de volteo (cambia las coordenadas de textura).
 - `anim` indexa la tabla ANIM del capítulo (0 = ninguna, 1 = la primera). Una `SHOW` sobre un tag existente con `z` = -128 conserva su orden de dibujo.
 - Los cambios de `SCENE`/`SHOW`/`HIDE` se acumulan; `TRANSITION` los presenta con el efecto indicado. Sin `TRANSITION`, el cambio se ve de golpe cuando termina la instrucción de texto o pausa siguiente.

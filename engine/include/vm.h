@@ -25,11 +25,15 @@ typedef struct {
 	const uint8_t *anims;       /* tabla ANIM o NULL */
 } VmChapter;
 
+#define VM_SPRITE_RANDOM 0x04       /* flag de SHOW_RANDOM: aparece y se desvanece en (rx, ry) como randPosition */
+
 typedef struct {
 	uint8_t used, tag, pos, flags;
 	int8_t z;
 	uint16_t image, anim;
 	uint32_t born;              /* orden de creacion (desempata el z) */
+	uint32_t shown_at;          /* vm->now cuando empezo su animacion */
+	int16_t rx, ry;             /* alineacion 8.8 de los sprites de SHOW_RANDOM */
 } VmSprite;
 
 typedef enum {
@@ -79,6 +83,8 @@ struct Vm {
 	int choice;                 /* lo pone el anfitrion al resolver un menu */
 	int in_menu;
 	const char *error;
+	uint32_t now;               /* reloj del anfitrion en cuadros (inicio de las animaciones) */
+	uint32_t rng;               /* estado del azar de SHOW_RANDOM */
 };
 
 void vm_init(Vm *vm, const VmHost *host);

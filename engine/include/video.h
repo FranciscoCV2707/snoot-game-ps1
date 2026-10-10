@@ -33,7 +33,7 @@ void video_init(void);
 void *video_alloc(int size);
 void video_add(int layer, void *prim);
 void video_set_tpage(int layer, int mode, int abr, int x, int y);
-void video_rect(int layer, int x, int y, int w, int h, int r, int g, int b, int semi_trans);
+void video_rect(int layer, int x, int y, int w, int h, int r, int g, int b, int blend);
 void video_triangle_down(int layer, int x, int y, int w, int h, int r, int g, int b);
 void video_flip(void);
 int video_frames(void);
