@@ -7,8 +7,6 @@ Hecho:
 - Precarga de las imagenes de las escenas siguientes en un cache de RAM (320 KB) aprovechando esa pausa.
 - Disolver continuo con brillo de texturas en vez de pasos.
 - Caja de texto como `window auto` de Ren'Py: fundido de 0.2 s al aparecer y ocultarse, caja vacia en pausas, `window show/hide` respetados (antes se ignoraban). Verificado midiendo el oscurecimiento de la caja cuadro a cuadro en PCSX-Redux.
-- Plan de herramientas genericas Ren'Py -> PS1 en `docs/plan-renpy2psx.md` (para despues de la v0.1).
-
 ## 2026-10-09 - Fases 8 y 9, inicio de la 10
 Hecho:
 - Audio (`engine/src/audio.c`): XA por carriles, ambientes y efectos en la SPU; los efectos de mas de 192 KB se convierten a 11 kHz.

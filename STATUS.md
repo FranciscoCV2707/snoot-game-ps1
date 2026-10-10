@@ -97,8 +97,6 @@ Ultima actualizacion: 2026-10-10
 - [x] Caja de texto con fundido y modo `window auto` como Ren'Py
 - [ ] Pulido opcional: movimientos lentos de sprites mas suaves
 - [ ] Fase 11 - Hardware real (tiempo de busqueda del CD, memory card fisica) y distribucion
-- [ ] Despues de la v0.1: herramientas genericas Ren'Py -> PS1 (docs/plan-renpy2psx.md)
-
 ## Notas
 - mkpsxiso 2.10 no admite rutas absolutas de Windows en el XML; usar rutas relativas (ver docs/entorno.md).
 - PCSX-Redux requiere BIOS real (SCPH1001); con OpenBIOS no arranca el disco.
