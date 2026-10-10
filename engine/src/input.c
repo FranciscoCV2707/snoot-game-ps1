@@ -11,7 +11,8 @@ static int script_count;
 /* La prueba automatica pide capturas y salir con valores especiales; el Lua del emulador lee estas variables */
 #define SCRIPT_SHOT 0xFFFF
 #define SCRIPT_QUIT 0xFFFE
-volatile uint32_t autotest_shot, autotest_quit;
+#define SCRIPT_AUTOPLAY 0xFFFD
+volatile uint32_t autotest_shot, autotest_quit, autotest_autoplay;
 static uint8_t script_done[700];
 static int script_base = -1;
 
@@ -60,6 +61,8 @@ void input_update(void)
 			autotest_shot++;
 		else if (buttons == SCRIPT_QUIT)
 			autotest_quit = 1;
+		else if (buttons == SCRIPT_AUTOPLAY)
+			autotest_autoplay = 1;
 		else
 			cur |= (uint16_t)buttons;
 	}

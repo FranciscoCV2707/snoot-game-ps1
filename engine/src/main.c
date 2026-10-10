@@ -897,7 +897,7 @@ static void update_dev(void)
 
 	if (input_pressed(PAD_UP) && menu_cursor > 0)
 		menu_cursor--;
-	if (input_pressed(PAD_DOWN) && menu_cursor < dev_count)
+	if (input_pressed(PAD_DOWN) && menu_cursor < dev_count + extra_count)
 		menu_cursor++;
 	if (input_pressed(PAD_CIRCLE)) {
 		go_title();
@@ -912,6 +912,12 @@ static void update_dev(void)
 		return;
 	}
 	i = menu_cursor - 1;
+	if (i >= dev_count) {                             /* despues de la historia, los capitulos extra */
+		i -= dev_count;
+		begin(extra_chapter[i], extra_offset[i], 255, 0);
+		playing_extra = 1;
+		return;
+	}
 	begin(dev_chapter, dev_offset[i], dev_var[i], dev_value[i]);
 }
 
@@ -926,12 +932,12 @@ static void draw_dev(void)
 	if (menu_cursor >= menu_top + rows)
 		menu_top = menu_cursor - rows + 1;
 	y = MENU_TOP - 8 + lh + 4;
-	for (i = menu_top; i <= dev_count && i < menu_top + rows; i++) {
+	for (i = menu_top; i <= dev_count + extra_count && i < menu_top + rows; i++) {
 		int selected = i == menu_cursor;
 
 		if (selected)
 			video_triangle_down(LAYER_TEXT, 6, y + 4, 8, 6, 255, 220, 40);
-		font_draw(LAYER_TEXT, 20, y, i == 0 ? "Historia completa" : dev_name[i - 1],
+		font_draw(LAYER_TEXT, 20, y, i == 0 ? "Historia completa" : i <= dev_count ? dev_name[i - 1] : extra_name[i - 1 - dev_count],
 		          selected ? 255 : 128, selected ? 220 : 128, selected ? 40 : 128);
 		y += lh;
 	}
@@ -1644,6 +1650,52 @@ static void finish_game(void)
 	go_title();
 }
 
+/* Prueba de recorrido (AUTOTEST con autoplay): avanza solo, sin saltar, para que se cargue todo como al jugar. Las
+ * decisiones van rotando para pasar por ramas distintas; al volver al titulo o ante un error pide cerrar el emulador. */
+static int autoplay_started, autoplay_menus;
+
+static void autoplay_step(void)
+{
+	switch (state) {
+	case ST_SAY:
+		text_reveal_page(&run);
+		if (run.at_page_end) {
+			text_next_page(&run);
+		} else {
+			seen_set(vm.ev_gid);
+			state = ST_RUN;
+		}
+		autoplay_started = 1;
+		break;
+	case ST_PAUSE:
+		state = ST_RUN;
+		break;
+	case ST_MENU:
+		vm.choice = menu_order[autoplay_menus++ % vm.menu_n];
+		state = ST_RUN;
+		break;
+	case ST_TRANS:
+		end_transition();
+		break;
+	case ST_SCROLL:
+	case ST_CREDITS:
+		state = ST_RUN;
+		break;
+	case ST_NOTICE:
+		state = notice_next;
+		break;
+	case ST_ERROR:
+		autotest_quit = 1;
+		break;
+	case ST_TITLE:
+		if (autoplay_started)
+			autotest_quit = 1;
+		break;
+	default:
+		break;
+	}
+}
+
 /* Pasa varias lineas ya leidas y pausas por cuadro; se detiene en la primera linea no leida. */
 static void skip_step(void)
 {
@@ -1776,6 +1828,8 @@ int main(int argc, const char *argv[])
 
 		input_update();
 		audio_update();
+		if (autotest_autoplay)
+			autoplay_step();
 		in_game = state <= ST_ERROR || state == ST_TRANS || state == ST_SCROLL || state == ST_CREDITS;
 		if (in_game)
 			anim_sounds();

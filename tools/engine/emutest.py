@@ -4,7 +4,8 @@ corre sin interfaz tomando las capturas que el guion pide.
 No usa el teclado ni la pantalla de la PC, asi que se puede correr mientras se usa la computadora. Los cuadros se
 cuentan con VSync desde que aparece el titulo (el motor los cuenta), asi que no dependen de cuanto tarde el arranque.
 
-Pasos: "cuadro accion [argumento]" separados por ";". Acciones: press BOTON, shot NOMBRE, quit.
+Pasos: "cuadro accion [argumento]" separados por ";". Acciones: press BOTON, shot NOMBRE, quit, autoplay (el motor
+avanza solo y cierra el emulador al volver al titulo o ante un error).
 Botones: CROSS, CIRCLE, SQUARE, TRIANGLE, START, SELECT, UP, DOWN, LEFT, RIGHT, L1, R1, L2, R2.
 Ejemplo: python -m tools.engine.emutest --steps "300 shot titulo; 320 press CROSS; 900 shot juego; 910 quit"
 Salida: <out>/<nombre>.png; la memory card de prueba queda en <out>/card1.mcd (con --keep-card se reusa).
@@ -30,8 +31,8 @@ NM = Path(r"C:\msys64\usr\local\psn00bsdk\bin\mipsel-none-elf-nm.exe")
 BUTTONS = {"SELECT": 1 << 0, "START": 1 << 3, "UP": 1 << 4, "RIGHT": 1 << 5, "DOWN": 1 << 6, "LEFT": 1 << 7,
            "L2": 1 << 8, "R2": 1 << 9, "L1": 1 << 10, "R1": 1 << 11, "TRIANGLE": 1 << 12, "CIRCLE": 1 << 13,
            "CROSS": 1 << 14, "SQUARE": 1 << 15}
-SHOT, QUIT = 0xFFFF, 0xFFFE
-WATCH = ("frames", "card_state")   # variables del motor que se anotan en cada captura
+SHOT, QUIT, AUTOPLAY = 0xFFFF, 0xFFFE, 0xFFFD
+WATCH = ("frames", "res_fail_read", "res_fail_vram", "res_fail_clut")   # variables del motor que se anotan en cada captura
 
 LUA = """
 local ffi = require('ffi')
@@ -61,6 +62,12 @@ EMUTEST_LISTENER = PCSX.Events.createEventListener('GPU::Vsync', function()
     log:close()
   end
   if ffi.cast('uint32_t*', mem + quit_addr)[0] ~= 0 or frames > %(max_frames)d then
+    local fin = 'END frames=' .. frames .. ' state=' .. tostring(u32(state_addr)) .. ' cap=' .. tostring(u32(vm_addr + 24)) ..
+      ' pc=' .. tostring(u32(vm_addr + 28))
+    for k, a in pairs(watch) do fin = fin .. ' ' .. k .. '=' .. tostring(u32(a)) end
+    local f = Support.File.open(outdir .. '/final.txt', 'TRUNCATE')
+    f:write(fin)
+    f:close()
     PCSX.quit(0)
   end
 end)
@@ -79,7 +86,7 @@ def parse_steps(text):
 def autotest_bin(steps):
     entries = []
     for frame, action, arg in steps:
-        value = SHOT if action == "shot" else QUIT if action == "quit" else BUTTONS[arg.upper()]
+        value = {"shot": SHOT, "quit": QUIT, "autoplay": AUTOPLAY}.get(action) or BUTTONS[arg.upper()]
         entries.append(struct.pack("<IH", frame, value))
     return struct.pack("<H", len(entries)) + b"".join(entries)
 
@@ -114,10 +121,10 @@ def to_png(raw, width, height):
     return png
 
 
-def run(steps, out, keep_card=False, timeout=900):
+def run(steps, out, keep_card=False, timeout=900, max_frames=None):
     out = out.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    for old in list(out.glob("*.png")) + list(out.glob("*.raw")) + [out / "shots.txt"]:
+    for old in list(out.glob("*.png")) + list(out.glob("*.raw")) + [out / "shots.txt", out / "final.txt"]:
         old.unlink(missing_ok=True)
     if not keep_card:
         (out / "card1.mcd").unlink(missing_ok=True)
@@ -131,7 +138,7 @@ def run(steps, out, keep_card=False, timeout=900):
     script.write_text(LUA % {"names": names, "outdir": out.as_posix(), "shot": sym["autotest_shot"], "quit": sym["autotest_quit"],
                              "state": sym["state"], "vm": sym["vm"],
                              "watch": ", ".join(f"{n} = {sym[n]}" for n in WATCH if n in sym),
-                             "max_frames": last + 3000}, encoding="utf-8")
+                             "max_frames": max_frames or last + 3000}, encoding="utf-8")
     args = [str(REDUX), "-no-ui", "-run", "-fastboot", "-bios", str(BIOS), "-iso", str(CUE),
             "-memcard1", str(out / "card1.mcd"), "-exec", f"dofile('{script.as_posix()}')"]
     try:
@@ -168,8 +175,12 @@ def main():
     ap.add_argument("--out", type=Path, default=ROOT / "build" / "emutest")
     ap.add_argument("--keep-card", action="store_true")
     ap.add_argument("--timeout", type=int, default=900)
+    ap.add_argument("--max-frames", type=int, help="cierra el emulador despues de estos cuadros (por defecto el ultimo paso + 3000)")
     args = ap.parse_args()
-    shots = run(parse_steps(args.steps), args.out, args.keep_card, args.timeout)
+    shots = run(parse_steps(args.steps), args.out, args.keep_card, args.timeout, args.max_frames)
+    final = args.out.resolve() / "final.txt"
+    if final.exists():
+        print(final.read_text(encoding="utf-8"))
     for png in shots:
         print(png)
     sheet = contact_sheet(shots, args.out.resolve() / "sheet.png")
