@@ -99,6 +99,14 @@ void video_triangle_down(int layer, int x, int y, int w, int h, int r, int g, in
 
 void video_flip(void)
 {
+	DR_STP *stp = (DR_STP *)video_alloc(sizeof(DR_STP));
+
+	/* todo lo que se dibuja lleva el bit de mascara: asi una copia de la pantalla usada como textura de 15 bits no
+	 * tiene negros transparentes (0x0000) y se puede mezclar (la GPU solo mezcla texeles con ese bit) */
+	if (stp) {
+		setDrawStp(stp, 1, 0);
+		video_add(LAYER_BG, stp);
+	}
 	DrawSync(0);
 	VSync(0);
 	PutDispEnv(&disp[db]);
@@ -112,6 +120,39 @@ void video_flip(void)
 int video_frames(void)
 {
 	return frames;
+}
+
+/* Copia la vista 16:9 del ultimo cuadro terminado a VRAM (x, y) */
+void video_snapshot(int x, int y)
+{
+	RECT r;
+
+	DrawSync(0);
+	setRECT(&r, 0, draw[!db].clip.y + VIEW_Y, SCREEN_W, VIEW_H);
+	MoveImage(&r, x, y);
+	DrawSync(0);
+}
+
+/* Dibuja la copia como textura directa de 15 bits; blend como en video_rect */
+void video_snapshot_draw(int layer, int x, int y, int blend)
+{
+	int col;
+
+	for (col = 0; col < SCREEN_W; col += 256) {
+		SPRT *s = (SPRT *)video_alloc(sizeof(SPRT));
+		int w = SCREEN_W - col < 256 ? SCREEN_W - col : 256;
+
+		if (!s)
+			return;
+		setSprt(s);
+		setXY0(s, col, VIEW_Y);
+		setWH(s, w, VIEW_H);
+		setUV0(s, 0, y & 255);
+		setRGB0(s, 128, 128, 128);
+		setSemiTrans(s, blend != 0);
+		video_add(layer, s);
+		video_set_tpage(layer, 2, blend ? blend - 1 : 0, x + col, y);
+	}
 }
 
 /* Origen vertical (en VRAM) del framebuffer donde se dibuja el cuadro actual */

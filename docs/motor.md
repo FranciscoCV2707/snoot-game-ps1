@@ -1,6 +1,6 @@
 # Motor PS1 (engine/)
 
-Estado: Fase 8 en curso (audio hecho; siguen transiciones, titulo, pausa, guardado). Se construye con `python -m tools.engine.build_game [--chapters 0,1]`, que genera `build/engine/snoot_game.cue` con los capitulos pedidos y solo las imagenes que usan.
+Estado: Fase 8 en curso (audio y transiciones hechos; siguen titulo, pausa, guardado). Se construye con `python -m tools.engine.build_game [--chapters 0,1]`, que genera `build/engine/snoot_game.cue` con los capitulos pedidos y solo las imagenes que usan.
 
 ## Modulos
 | Archivo | Que hace |
@@ -27,7 +27,13 @@ Estado: Fase 8 en curso (audio hecho; siguen transiciones, titulo, pausa, guarda
 X avanza o completa el texto y confirma en menus, d-pad arriba/abajo elige, R1 salta lineas ya leidas (se detiene en lineas nuevas y menus), Cuadrado oculta la caja, Select muestra la depuracion.
 
 ## Pendiente en el motor (fases siguientes)
-Transiciones, camara animada, guardado, titulo, pausa, galeria y packs de carga.
+Camara animada, guardado, titulo, pausa, galeria y packs de carga.
+
+## Transiciones
+- Dissolve y fundidos guardan el ultimo cuadro en VRAM (`video_snapshot`, banda baja de la zona de fondos reservada con `res_reserve_snapshot`) y lo dibujan como textura de 15 bits encima de la escena nueva.
+- Todo se dibuja con el bit de mascara (DR_STP): asi la copia no tiene negros transparentes y la GPU puede mezclarla.
+- Dissolve: copia al 75% (dos pasadas al 50%), luego al 50%, luego nada. Fundido a negro/blanco: resta/suma de un gris que sube y baja.
+- vpunch/hpunch desplazan toda la escena; MoveTransition lleva cada sprite de donde estaba (o desde el borde) a su posicion nueva.
 
 ## Audio
 - RAM de la SPU: 4 KB del sistema, zona de efectos (~284 KB, se vacia entera al llenarse) y 4 espacios de 56 KB para ambientes (voces 0-3). Efectos en las voces 4-23.

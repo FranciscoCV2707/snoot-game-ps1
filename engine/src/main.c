@@ -37,7 +37,7 @@ typedef struct {
 	uint8_t r, g, b;
 } Speaker;
 
-typedef enum { ST_RUN, ST_SAY, ST_MENU, ST_PAUSE, ST_END, ST_ERROR, ST_DEV } State;
+typedef enum { ST_RUN, ST_SAY, ST_MENU, ST_PAUSE, ST_END, ST_ERROR, ST_DEV, ST_TRANS } State;
 
 static uint8_t file_buf[16 * 1024] __attribute__((aligned(4)));
 static uint8_t chapter_buf[CHAPTER_BYTES] __attribute__((aligned(4)));
@@ -425,8 +425,172 @@ static const Image *scene_image(int id)
 	return skip_mode ? res_peek(id) : res_get(id);
 }
 
+/* ---------------------------------------------------------------- transiciones */
+#define TR_CUT 0
+#define TR_DISSOLVE 1
+#define TR_FADE 2
+#define TR_VPUNCH 3
+#define TR_HPUNCH 4
+#define TR_MOVE 5
+#define TR_FADE_WHITE 6
+
+static int trans_type, trans_t, trans_len, trans_a, trans_b, trans_c, snap_x = -1, snap_y;
+static int scene_dx, scene_dy;                       /* desplazamiento de toda la escena (sacudidas) */
+static int16_t last_x[VM_MAX_SPRITES], last_y[VM_MAX_SPRITES];
+static uint8_t last_tag[VM_MAX_SPRITES], last_valid[VM_MAX_SPRITES];
+static int16_t from_x[VM_MAX_SPRITES], from_y[VM_MAX_SPRITES];
+static uint8_t from_edge[VM_MAX_SPRITES];             /* 0 desde su posicion anterior; 1-4 entra por el borde */
+
+static int ease256(int curve, int u)
+{
+	int v = 256 - u;
+
+	switch (curve) {
+	case 1:
+		return (u * u * u) >> 16;
+	case 2:
+		return 256 - ((v * v * v) >> 16);
+	case 3:
+		return u < 128 ? (u * u * u) >> 14 : 256 - ((v * v * v) >> 14);
+	}
+	return u;
+}
+
+static void begin_transition(void)
+{
+	int i;
+
+	trans_type = vm.ev_args[0];
+	trans_a = vm.ev_args[1];
+	trans_b = vm.ev_args[2];
+	trans_c = vm.ev_args[3];
+	trans_t = 0;
+	switch (trans_type) {
+	case TR_DISSOLVE:
+	case TR_VPUNCH:
+	case TR_HPUNCH:
+	case TR_MOVE:
+		trans_len = trans_a;
+		break;
+	case TR_FADE:
+	case TR_FADE_WHITE:
+		trans_len = trans_a + trans_b + trans_c;
+		break;
+	default:
+		trans_len = 0;
+	}
+	if (skip_mode || trans_len <= 0)
+		return;
+	if (trans_type == TR_DISSOLVE || trans_type == TR_FADE || trans_type == TR_FADE_WHITE) {
+		/* el cuadro anterior se guarda en VRAM antes de cargar lo nuevo */
+		res_reserve_snapshot(&snap_x, &snap_y);
+		video_snapshot(snap_x, snap_y);
+	}
+	if (trans_type == TR_MOVE)
+		for (i = 0; i < VM_MAX_SPRITES; i++) {
+			const VmSprite *s = &vm.sprites[i];
+
+			from_edge[i] = 0;
+			if (!s->used)
+				continue;
+			if (last_valid[i] && last_tag[i] == s->tag) {
+				from_x[i] = last_x[i];
+				from_y[i] = last_y[i];
+			} else {
+				from_edge[i] = (uint8_t)(trans_b & 15);
+			}
+		}
+	state = ST_TRANS;
+}
+
+static void end_transition(void)
+{
+	if (snap_x >= 0) {
+		res_release_snapshot();
+		snap_x = -1;
+	}
+	scene_dx = scene_dy = 0;
+	state = ST_RUN;
+}
+
+static void update_transition(void)
+{
+	if (++trans_t >= trans_len || skip_mode)
+		end_transition();
+}
+
+/* Sacudidas: desplazamiento que alterna de lado cada 2 cuadros y se apaga hacia el final */
+static void transition_offset(void)
+{
+	int amp;
+
+	scene_dx = scene_dy = 0;
+	if (state != ST_TRANS || (trans_type != TR_VPUNCH && trans_type != TR_HPUNCH))
+		return;
+	amp = (trans_b / 6) * (trans_len - trans_t) / trans_len;
+	if ((trans_t >> 1) & 1)
+		amp = -amp;
+	if (trans_type == TR_VPUNCH)
+		scene_dy = amp;
+	else
+		scene_dx = amp;
+}
+
+/* Posicion de un sprite durante MoveTransition (y registro de donde quedo cada uno) */
+static void move_position(int slot, int tag, int w, int h, int *x, int *y)
+{
+	if (state == ST_TRANS && trans_type == TR_MOVE && vm.sprites[slot].used) {
+		int e = ease256(trans_c, trans_t * 256 / trans_len), fx = from_x[slot], fy = from_y[slot];
+
+		switch (from_edge[slot]) {
+		case 1: fx = -w; fy = *y; break;
+		case 2: fx = SCREEN_W; fy = *y; break;
+		case 3: fx = *x; fy = VIEW_Y - h; break;
+		case 4: fx = *x; fy = VIEW_Y + VIEW_H; break;
+		}
+		*x = fx + (*x - fx) * e / 256;
+		*y = fy + (*y - fy) * e / 256;
+	}
+	last_x[slot] = (int16_t)*x;
+	last_y[slot] = (int16_t)*y;
+	last_tag[slot] = (uint8_t)tag;
+	last_valid[slot] = 1;
+}
+
+/* Dissolve con la mezcla fija de la GPU: el cuadro anterior encima al 75% (dos pasadas al 50%), luego al 50% y
+ * despues ya no. Los fundidos restan (negro) o suman (blanco) un gris que crece y luego decrece. */
+static void draw_transition(void)
+{
+	int p, v, white = trans_type == TR_FADE_WHITE;
+
+	if (state != ST_TRANS)
+		return;
+	p = trans_t * 256 / trans_len;
+	if (trans_type == TR_DISSOLVE && snap_x >= 0) {
+		if (p < 192)
+			video_snapshot_draw(LAYER_FX, snap_x, snap_y, 1);
+		if (p < 96)
+			video_snapshot_draw(LAYER_FX, snap_x, snap_y, 1);
+	} else if (trans_type == TR_FADE || white) {
+		if (trans_t < trans_a) {
+			v = trans_t * 255 / (trans_a ? trans_a : 1);
+			video_rect(LAYER_FX, 0, VIEW_Y, SCREEN_W, VIEW_H, v, v, v, white ? 2 : 3);  /* encima de la copia */
+			if (snap_x >= 0)
+				video_snapshot_draw(LAYER_FX, snap_x, snap_y, 0);
+		} else if (trans_t < trans_a + trans_b) {
+			v = white ? 255 : 0;
+			video_rect(LAYER_FX, 0, VIEW_Y, SCREEN_W, VIEW_H, v, v, v, 0);
+		} else {
+			v = (trans_len - trans_t) * 255 / (trans_c ? trans_c : 1);
+			video_rect(LAYER_FX, 0, VIEW_Y, SCREEN_W, VIEW_H, v, v, v, white ? 2 : 3);
+		}
+	}
+}
+
 static void draw_bg(void)
 {
+	if (!vm.bg)
+		video_rect(LAYER_BG, 0, VIEW_Y, SCREEN_W, VIEW_H, 0, 0, 0, 0);   /* negro dibujado: lleva el bit de mascara */
 	if (vm.bg) {
 		const Image *bg = scene_image(vm.bg);
 
@@ -436,8 +600,8 @@ static void draw_bg(void)
 			int xa, ya, bx, by;
 
 			bg_align(&xa, &ya);
-			bx = ((SCREEN_W - bg->full_w) * xa) >> 16;
-			by = VIEW_Y + (((VIEW_H - bg->full_h) * ya) >> 16);
+			bx = (((SCREEN_W - bg->full_w) * xa) >> 16) + scene_dx;
+			by = VIEW_Y + (((VIEW_H - bg->full_h) * ya) >> 16) + scene_dy;
 			if (bg->big)
 				img_draw_big(bg, LAYER_BG, bx, by);
 			else
@@ -478,9 +642,10 @@ static void draw_scene(void)
 			draw_solid(layer, img->solid, lk.alpha);
 		} else {
 			int w = img->full_w * lk.zoom / 64, h = img->full_h * lk.zoom / 64;
+			int x = ((SCREEN_W - w) * lk.xa) / 256, y = VIEW_Y + ((VIEW_H - h) * lk.ya) / 256;
 
-			img_draw_ex(img, layer, ((SCREEN_W - w) * lk.xa) / 256, VIEW_Y + ((VIEW_H - h) * lk.ya) / 256,
-			            lk.flip, lk.zoom, lk.r, lk.g, lk.b);
+			move_position((int)(s - vm.sprites), s->tag, w, h, &x, &y);
+			img_draw_ex(img, layer, x + scene_dx, y + scene_dy, lk.flip, lk.zoom, lk.r, lk.g, lk.b);
 		}
 		if (covers_view(img, s)) {
 			video_clip_scene();
@@ -584,6 +749,8 @@ static void run_vm(void)
 	vm.now = (uint32_t)video_frames();
 	ev = vm_run(&vm);
 
+	if (ev == VM_EV_TRANSITION)
+		begin_transition();          /* antes de cargar lo nuevo: guarda el cuadro anterior */
 	scene_sync();
 	switch (ev) {
 	case VM_EV_SAY:
@@ -813,11 +980,16 @@ int main(int argc, const char *argv[])
 		case ST_DEV:
 			update_dev();
 			break;
+		case ST_TRANS:
+			update_transition();
+			break;
 		default:
 			break;
 		}
 
+		transition_offset();
 		draw_scene();
+		draw_transition();
 		if (state == ST_DEV)
 			draw_dev();
 		else if (state == ST_SAY && show_box)

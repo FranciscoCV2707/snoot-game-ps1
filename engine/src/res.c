@@ -123,6 +123,37 @@ static int take_clut(void)
 
 static const Image *load_image(int image_id);
 
+#define SNAP_GY 16                      /* copia de pantalla: banda baja de la zona de fondos, 320 x 192 filas */
+#define SNAP_GH 12
+#define SNAP_MARK 0xFF
+
+void res_reserve_snapshot(int *vram_x, int *vram_y)
+{
+	int i, x, y;
+
+	for (i = 0; i < MAX_ENTRIES; i++) {
+		Entry *e = &entries[i];
+
+		if (e->used && e->has_cells && e->region == 1 && e->gy < SNAP_GY + SNAP_GH && e->gy + e->gh > SNAP_GY)
+			free_entry(e);
+	}
+	for (y = SNAP_GY; y < SNAP_GY + SNAP_GH; y++)
+		for (x = 0; x < GRID_W; x++)
+			grid[1][y][x] = SNAP_MARK;
+	*vram_x = VRAM_BG_X;
+	*vram_y = SNAP_GY * CELL_ROWS;
+}
+
+void res_release_snapshot(void)
+{
+	int x, y;
+
+	for (y = SNAP_GY; y < SNAP_GY + SNAP_GH; y++)
+		for (x = 0; x < GRID_W; x++)
+			if (grid[1][y][x] == SNAP_MARK)
+				grid[1][y][x] = 0;
+}
+
 const Image *res_get(int image_id)
 {
 	int i;

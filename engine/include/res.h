@@ -8,3 +8,6 @@ void res_new_scene(void);
 const Image *res_get(int image_id);
 /* Igual que res_get pero sin leer del CD: 0 si la imagen no esta ya cargada. */
 const Image *res_peek(int image_id);
+/* Banda de VRAM para una copia de la pantalla (transiciones): desaloja lo que haya y la marca ocupada */
+void res_reserve_snapshot(int *vram_x, int *vram_y);
+void res_release_snapshot(void);
