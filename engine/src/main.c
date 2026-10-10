@@ -2,7 +2,7 @@
  * Snoot Game PS1 - motor del juego (Fase 7): VM, escenas, dialogo, menus y modo saltar.
  *
  * Controles: X avanza, R1 salta lineas ya leidas, d-pad arriba/abajo elige en menus, Cuadrado oculta la caja,
- * Select muestra la depuracion.
+ * Select muestra la depuracion. Con DEV_MENU, Start vuelve al menu de capitulos.
  */
 #include <stdio.h>
 #include <string.h>
@@ -27,13 +27,15 @@
 #define MENU_BOTTOM 226
 #define MAX_GALLERY 256
 #define SKIP_PER_FRAME 8                 /* lineas ya leidas que pasan por cuadro al saltar */
+#define DEV_MENU 1                       /* desarrollo: menu de capitulos al arrancar (Start vuelve) y salto de lo no leido */
+#define MAX_DEV 48
 
 typedef struct {
 	char name[24];
 	uint8_t r, g, b;
 } Speaker;
 
-typedef enum { ST_RUN, ST_SAY, ST_MENU, ST_PAUSE, ST_END, ST_ERROR } State;
+typedef enum { ST_RUN, ST_SAY, ST_MENU, ST_PAUSE, ST_END, ST_ERROR, ST_DEV } State;
 
 static uint8_t file_buf[16 * 1024] __attribute__((aligned(4)));
 static uint8_t chapter_buf[CHAPTER_BYTES] __attribute__((aligned(4)));
@@ -57,6 +59,12 @@ static uint16_t gallery_image[MAX_GALLERY];      /* imagen -> indice de galeria,
 static uint8_t gallery_index[MAX_GALLERY];
 static int gallery_pairs, gallery_count;
 static uint8_t gallery_seen[(MAX_GALLERY + 7) / 8];
+
+/* Menu de capitulos (desarrollo): entradas de STORY y la variable de ruta que cada una necesita (255 = ninguna) */
+static int dev_count, dev_chapter;
+static uint32_t dev_offset[MAX_DEV];
+static uint8_t dev_var[MAX_DEV], dev_value[MAX_DEV];
+static char dev_name[MAX_DEV][32];
 
 /* Modo saltar (R1): pasa lo ya leido sin cargar nada del CD; se detiene en texto nuevo, finales y cambios de capitulo */
 static int skip_mode, eat_cross;
@@ -158,6 +166,23 @@ static void load_game_tables(void)
 		gallery_image[i] = rd16(p);
 		gallery_index[i] = p[2];
 		p += 3;
+	}
+	if (p + 4 > file_buf + size)
+		return;
+	dev_chapter = rd16(p);
+	dev_count = rd16(p + 2);
+	p += 4;
+	if (dev_count > MAX_DEV)
+		dev_count = MAX_DEV;
+	for (i = 0; i < dev_count; i++) {
+		int n = p[6] < 31 ? p[6] : 31;
+
+		dev_offset[i] = rd32(p);
+		dev_var[i] = p[4];
+		dev_value[i] = p[5];
+		memcpy(dev_name[i], p + 7, n);
+		dev_name[i][n] = 0;
+		p += 7 + p[6];
 	}
 }
 
@@ -516,15 +541,70 @@ static void run_vm(void)
 	}
 }
 
-static void restart(void)
+static void begin(int chapter, uint32_t offset, int var, int value)
 {
 	memset(vm.sprites, 0, sizeof(vm.sprites));
 	vm.bg = 0;
 	memset(vm.vars, 0, sizeof(vm.vars));
+	if (var < VM_VARS)
+		vm.vars[var] = (int16_t)value;
 	scene_dirty = 1;
-	if (vm_start(&vm, start_chapter, start_offset) != 0)
+	skip_mode = 0;
+	if (vm_start(&vm, chapter, offset) != 0)
 		fatal("no se pudo iniciar el capitulo");
 	state = ST_RUN;
+}
+
+static void restart(void)
+{
+	if (DEV_MENU && dev_count) {
+		menu_cursor = 0;
+		menu_top = 0;
+		state = ST_DEV;
+		return;
+	}
+	begin(start_chapter, start_offset, 255, 0);
+}
+
+/* Fila 0: la historia completa; las demas, las entradas de la tabla */
+static void update_dev(void)
+{
+	int i;
+
+	if (input_pressed(PAD_UP) && menu_cursor > 0)
+		menu_cursor--;
+	if (input_pressed(PAD_DOWN) && menu_cursor < dev_count)
+		menu_cursor++;
+	if (!input_pressed(PAD_CROSS))
+		return;
+	if (menu_cursor == 0) {
+		begin(start_chapter, start_offset, 255, 0);
+		return;
+	}
+	i = menu_cursor - 1;
+	begin(dev_chapter, dev_offset[i], dev_var[i], dev_value[i]);
+}
+
+static void draw_dev(void)
+{
+	int lh = font_line_height(), rows = (MENU_BOTTOM - MENU_TOP - lh) / lh, i, y;
+
+	video_rect(LAYER_BOX, 0, 0, SCREEN_W, SCREEN_H, 0, 0, 0, 1);
+	font_draw(LAYER_TEXT, 20, MENU_TOP - 8, "Menu de capitulos (desarrollo)", 255, 220, 40);
+	if (menu_cursor < menu_top)
+		menu_top = menu_cursor;
+	if (menu_cursor >= menu_top + rows)
+		menu_top = menu_cursor - rows + 1;
+	y = MENU_TOP - 8 + lh + 4;
+	for (i = menu_top; i <= dev_count && i < menu_top + rows; i++) {
+		int selected = i == menu_cursor;
+
+		if (selected)
+			video_triangle_down(LAYER_TEXT, 6, y + 4, 8, 6, 255, 220, 40);
+		font_draw(LAYER_TEXT, 20, y, i == 0 ? "Historia completa" : dev_name[i - 1],
+		          selected ? 255 : 128, selected ? 220 : 128, selected ? 40 : 128);
+		y += lh;
+	}
 }
 
 /* Pasa varias lineas ya leidas y pausas por cuadro; se detiene en la primera linea no leida. */
@@ -534,7 +614,7 @@ static void skip_step(void)
 
 	for (n = 0; skip_mode && n < SKIP_PER_FRAME; n++) {
 		if (state == ST_SAY) {
-			if (!say_seen_before) {
+			if (!say_seen_before && !DEV_MENU) {
 				skip_mode = 0;
 				break;
 			}
@@ -625,9 +705,13 @@ int main(int argc, const char *argv[])
 			debug = !debug;
 		if (input_pressed(PAD_SQUARE))
 			show_box = !show_box;
+		if (DEV_MENU && state != ST_DEV && input_pressed(PAD_START))
+			restart();
 		/* R1 activa o detiene el salto; X tambien lo detiene (fuera de una decision) sin avanzar la linea */
 		eat_cross = 0;
-		if (input_pressed(PAD_R1)) {
+		if (state == ST_DEV) {
+			/* nada: el menu de capitulos no salta */
+		} else if (input_pressed(PAD_R1)) {
 			skip_mode = !skip_mode;
 		} else if (skip_mode && state != ST_MENU && input_pressed(PAD_CROSS)) {
 			skip_mode = 0;
@@ -653,12 +737,17 @@ int main(int argc, const char *argv[])
 			if (input_pressed(PAD_CROSS))
 				restart();
 			break;
+		case ST_DEV:
+			update_dev();
+			break;
 		default:
 			break;
 		}
 
 		draw_scene();
-		if (state == ST_SAY && show_box)
+		if (state == ST_DEV)
+			draw_dev();
+		else if (state == ST_SAY && show_box)
 			draw_box();
 		else if (state == ST_MENU)
 			draw_menu();

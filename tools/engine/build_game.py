@@ -94,6 +94,26 @@ def build_game_bin(meta, start_chapter, start_offset):
     return out
 
 
+def dev_chapter_table(program, meta):
+    """Menu de desarrollo: cada LOAD_CHAPTER de STORY, con la variable de ruta que lo protege (si la hay)."""
+    names = {e["chapter"]: label for label, e in meta["entries"].items()}
+    story = program.chapters[program.story_index]
+    out, recent, cond = [], [], None
+    for off, name, a in story.walk():
+        if name == "JUMP_IF_FALSE" and [n for n, _ in recent] == ["PUSH_VAR", "PUSH_CONST", "OP"]:
+            cond = (recent[0][1]["var"], recent[1][1]["value"])
+        elif name == "LOAD_CHAPTER":
+            label = names.get(a["chapter"], f"chapter_{a['chapter']}").removeprefix("chapter_").replace("_", ".")
+            text = f"Capitulo {label}" + (f"  (ruta {cond[1]})" if cond else "")
+            var, value = cond if cond else (255, 0)
+            out.append((off, var, value, text.encode("utf-8")))
+        recent = (recent + [(name, a)])[-3:]
+    blob = struct.pack("<HH", program.story_index, len(out))
+    for off, var, value, text in out:
+        blob += struct.pack("<IBBB", off, var, value, len(text)) + text
+    return blob
+
+
 def text_block(raw, index):
     off, size = struct.unpack_from("<II", raw, 6 + 8 * index)
     return raw[off:off + size]
@@ -123,7 +143,10 @@ def main():
         if old.is_file() and old.suffix.upper() in (".IMG", ".VNB", ".TXT", ".BIN", ".EXE"):
             old.unlink()
 
-    sources = [("GAME.BIN", build_game_bin(meta, entry["chapter"], entry["offset"])), ("FONT.BIN", (DATA / "FONT.BIN").read_bytes())]
+    game_bin = build_game_bin(meta, entry["chapter"], entry["offset"])
+    if args.chapters == "all":
+        game_bin += dev_chapter_table(program, meta)
+    sources = [("GAME.BIN", game_bin), ("FONT.BIN", (DATA / "FONT.BIN").read_bytes())]
     images = set()
     for idx in chapters:
         fname = "STORY.VNB" if program.chapters[idx].name == "STORY" else f"C{idx:02d}.VNB"
