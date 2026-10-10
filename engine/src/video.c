@@ -141,7 +141,7 @@ void video_snapshot(int x, int y)
 }
 
 /* Dibuja la copia como textura directa de 15 bits; blend como en video_rect */
-void video_snapshot_draw(int layer, int x, int y, int blend)
+void video_snapshot_draw(int layer, int x, int y, int blend, int bright)
 {
 	int col;
 
@@ -155,7 +155,7 @@ void video_snapshot_draw(int layer, int x, int y, int blend)
 		setXY0(s, col, VIEW_Y);
 		setWH(s, w, VIEW_H);
 		setUV0(s, 0, y & 255);
-		setRGB0(s, 128, 128, 128);
+		setRGB0(s, bright, bright, bright);
 		setSemiTrans(s, blend != 0);
 		video_add(layer, s);
 		video_set_tpage(layer, 2, blend ? blend - 1 : 0, x + col, y);

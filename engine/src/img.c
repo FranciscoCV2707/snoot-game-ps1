@@ -163,6 +163,8 @@ void img_draw_big(const Image *img, int layer, int screen_x, int screen_y)
 	img_draw(&win, layer, screen_x + img->x + ox, screen_y + img->y + oy);
 }
 
+int img_brightness = 256;
+
 void img_draw(const Image *img, int layer, int screen_x, int screen_y)
 {
 	img_draw_ex(img, layer, screen_x, screen_y, 0, 64, 128, 128, 128);
@@ -178,6 +180,10 @@ void img_draw_flip(const Image *img, int layer, int screen_x, int screen_y, int 
 void img_draw_ex(const Image *img, int layer, int screen_x, int screen_y, int flip, int zoom, int r, int g, int b)
 {
 	int col = 0, fw = img->full_w;
+
+	r = r * img_brightness >> 8;     /* brillo global (transiciones): la GPU multiplica la textura por este color */
+	g = g * img_brightness >> 8;
+	b = b * img_brightness >> 8;
 
 	if (!img->loaded)
 		return;

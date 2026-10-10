@@ -38,7 +38,8 @@ void video_rect(int layer, int x, int y, int w, int h, int r, int g, int b, int 
 void video_triangle_down(int layer, int x, int y, int w, int h, int r, int g, int b);
 void video_flip(void);
 void video_snapshot(int x, int y);
-void video_snapshot_draw(int layer, int x, int y, int blend);
+/* bright: modulacion de color (128 = normal, 0 = negro) */
+void video_snapshot_draw(int layer, int x, int y, int blend, int bright);
 int video_frames(void);
 void video_clip_scene(void);   /* llamar despues de agregar la escena (se dibuja primero) */
 void video_unclip(void);       /* llamar despues de agregar la caja de texto y la interfaz */

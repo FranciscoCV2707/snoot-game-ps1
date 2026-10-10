@@ -642,32 +642,52 @@ static void move_position(int slot, int tag, int w, int h, int *x, int *y)
 	last_valid[slot] = 1;
 }
 
-/* Dissolve con la mezcla fija de la GPU: el cuadro anterior encima al 75% (dos pasadas al 50%), luego al 50% y
- * despues ya no. Los fundidos restan (negro) o suman (blanco) un gris que crece y luego decrece. */
+/* Brillo de la escena nueva durante la transicion (256 = normal). Dissolve: la escena nueva se dibuja a brillo t y
+ * encima se suma la copia de la anterior a brillo 1 - t: nueva * t + vieja * (1 - t), continuo y exacto, porque la
+ * GPU multiplica cada textura por su color sin costo. Fundido a negro: la entrada sube el brillo de 0 a 1. */
+static int transition_brightness(void)
+{
+	int p;
+
+	if (state != ST_TRANS || trans_len <= 0)
+		return 256;
+	p = trans_t * 256 / trans_len;
+	if (trans_type == TR_DISSOLVE && snap_x >= 0)
+		return p;
+	if (trans_type == TR_FADE && trans_t >= trans_a + trans_b)
+		return (trans_t - trans_a - trans_b) * 256 / (trans_c ? trans_c : 1);
+	return 256;
+}
+
 static void draw_transition(void)
 {
 	int p, v, white = trans_type == TR_FADE_WHITE;
+
 	if (state != ST_TRANS)
-	if (state != ST_TRANS || 1)
 		return;
 	p = trans_t * 256 / trans_len;
 	if (trans_type == TR_DISSOLVE && snap_x >= 0) {
-		if (p < 192)
-			video_snapshot_draw(LAYER_FX, snap_x, snap_y, 1);
-		if (p < 96)
-			video_snapshot_draw(LAYER_FX, snap_x, snap_y, 1);
-	} else if (trans_type == TR_FADE || white) {
+		video_snapshot_draw(LAYER_FX, snap_x, snap_y, 2, (256 - p) * 128 / 256);     /* suma */
+	} else if (trans_type == TR_FADE) {
+		if (trans_t < trans_a) {
+			/* salida: la copia de la escena anterior se oscurece de verdad (multiplicada), no restada */
+			if (snap_x >= 0)
+				video_snapshot_draw(LAYER_FX, snap_x, snap_y, 0, (trans_a - trans_t) * 128 / (trans_a ? trans_a : 1));
+		} else if (trans_t < trans_a + trans_b) {
+			video_rect(LAYER_FX, 0, VIEW_Y, SCREEN_W, VIEW_H, 0, 0, 0, 0);
+		}
+		/* entrada: la escena nueva ya se dibujo con transition_brightness() */
+	} else if (white) {
 		if (trans_t < trans_a) {
 			v = trans_t * 255 / (trans_a ? trans_a : 1);
-			video_rect(LAYER_FX, 0, VIEW_Y, SCREEN_W, VIEW_H, v, v, v, white ? 2 : 3);  /* encima de la copia */
+			video_rect(LAYER_FX, 0, VIEW_Y, SCREEN_W, VIEW_H, v, v, v, 2);  /* encima de la copia */
 			if (snap_x >= 0)
-				video_snapshot_draw(LAYER_FX, snap_x, snap_y, 0);
+				video_snapshot_draw(LAYER_FX, snap_x, snap_y, 0, 128);
 		} else if (trans_t < trans_a + trans_b) {
-			v = white ? 255 : 0;
-			video_rect(LAYER_FX, 0, VIEW_Y, SCREEN_W, VIEW_H, v, v, v, 0);
+			video_rect(LAYER_FX, 0, VIEW_Y, SCREEN_W, VIEW_H, 255, 255, 255, 0);
 		} else {
 			v = (trans_len - trans_t) * 255 / (trans_c ? trans_c : 1);
-			video_rect(LAYER_FX, 0, VIEW_Y, SCREEN_W, VIEW_H, v, v, v, white ? 2 : 3);
+			video_rect(LAYER_FX, 0, VIEW_Y, SCREEN_W, VIEW_H, v, v, v, 2);
 		}
 	}
 }
@@ -680,7 +700,8 @@ static void draw_bg(void)
 		const Image *bg = scene_image(vm.bg);
 
 		if (bg && bg->kind == 2) {
-			video_rect(LAYER_BG, 0, VIEW_Y, SCREEN_W, VIEW_H, bg->solid[0], bg->solid[1], bg->solid[2], 0);
+			video_rect(LAYER_BG, 0, VIEW_Y, SCREEN_W, VIEW_H, bg->solid[0] * img_brightness >> 8,
+			           bg->solid[1] * img_brightness >> 8, bg->solid[2] * img_brightness >> 8, 0);
 		} else if (bg) {
 			int xa, ya, bx, by;
 
@@ -701,6 +722,11 @@ static void draw_solid(int layer, const uint8_t *rgba, int alpha)
 	int i;
 
 	scene_solid_blend(rgba, alpha, &sb);
+	if (sb.mode != 3) {                  /* el brillo de la transicion tambien oscurece los colores (no las restas) */
+		sb.r = sb.r * img_brightness >> 8;
+		sb.g = sb.g * img_brightness >> 8;
+		sb.b = sb.b * img_brightness >> 8;
+	}
 	for (i = 0; i < sb.passes; i++)
 		video_rect(layer, 0, VIEW_Y, SCREEN_W, VIEW_H, sb.r, sb.g, sb.b, sb.mode);
 }
@@ -1945,8 +1971,10 @@ int main(int argc, const char *argv[])
 		}
 
 		transition_offset();
+		img_brightness = transition_brightness();
 		if (state != ST_GALLERY && state != ST_SCROLL)
 			draw_scene();
+		img_brightness = 256;
 		draw_transition();
 		switch (state) {
 		case ST_DEV:

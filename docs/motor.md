@@ -45,7 +45,7 @@ Camara animada, packs de carga (Fase 9) y miniaturas en ranuras y galeria (opcio
 ## Transiciones
 - Dissolve y fundidos guardan el ultimo cuadro en VRAM (`video_snapshot`, banda baja de la zona de fondos reservada con `res_reserve_snapshot`) y lo dibujan como textura de 15 bits encima de la escena nueva.
 - Todo se dibuja con el bit de mascara (DR_STP): asi la copia no tiene negros transparentes y la GPU puede mezclarla.
-- Dissolve: copia al 75% (dos pasadas al 50%), luego al 50%, luego nada. Fundido a negro/blanco: resta/suma de un gris que sube y baja.
+- Dissolve continuo: la escena nueva se dibuja con brillo t (modulacion de color de las texturas, `img_brightness`) y encima se suma la copia de la anterior con brillo 1 - t. Fundido a negro: la copia se oscurece multiplicada y la escena nueva entra subiendo el brillo. Fundido a blanco: suma de un gris.
 - vpunch/hpunch desplazan toda la escena; MoveTransition lleva cada sprite de donde estaba (o desde el borde) a su posicion nueva.
 
 ## Audio

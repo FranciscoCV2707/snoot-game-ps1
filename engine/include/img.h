@@ -13,6 +13,9 @@ typedef struct {
 	uint8_t big;                  /* fondo mas grande que la VRAM disponible: vive en RAM (img_load_big) */
 } Image;
 
+/* Brillo de todo lo que se dibuja (256 = normal); lo usan los fundidos y el disolver */
+extern int img_brightness;
+
 #define IMG_HALF        0x02      /* flags: bitmap a media resolucion, se dibuja al doble */
 #define IMG_TRANSLUCENT 0x04      /* flags: se dibuja mezclado al 50% (la paleta trae el bit STP) */
 
