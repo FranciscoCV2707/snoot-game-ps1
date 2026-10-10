@@ -48,7 +48,7 @@ static int cur = -1, queued = -1, playing, lane;
 static int base_sector, start_frame;           /* sector del archivo donde empezo la lectura y cuadro de ese momento */
 static int track_start, track_end, track_loop; /* rango de la pista en el archivo (sectores) */
 static int end_id = -1, end_at = -1;           /* final de familia pendiente: cambia de carril al llegar al sector */
-static int stop_when_silent, cd_depth, resume_sector = -1;
+static int stop_when_silent, cd_depth, batch_depth, resume_sector = -1;
 static Fade music_fade, music_script;
 
 /* efectos y ambientes */
@@ -212,6 +212,7 @@ void audio_music_play(int id, int fade_tenths, int flags)
 		return;
 	}
 	adopt(id);
+	resume_sector = -1;                  /* una cancion nueva reemplaza a la que estaba en pausa por una lectura */
 	music_fade.cur = fade_tenths ? 0 : VOL_ONE;
 	fade_set(&music_fade, VOL_ONE, fade_tenths);
 	apply_music_volume();
@@ -238,6 +239,7 @@ void audio_music_stop(int fade_tenths)
 		CdControlB(CdlPause, 0, 0);
 		playing = 0;
 		cur = -1;
+		resume_sector = -1;
 		SpuSetCommonCDVolume(0, 0);
 		return;
 	}
@@ -249,7 +251,7 @@ static void music_update(void)
 {
 	int pos;
 
-	if (!playing || cd_depth)
+	if (!playing || cd_depth || resume_sector >= 0)
 		return;
 	pos = music_position();
 	if (end_at >= 0 && pos >= end_at) {
@@ -293,22 +295,42 @@ static void music_update(void)
 
 void audio_cd_begin(void)
 {
-	if (cd_depth++ == 0 && playing) {
+	if (cd_depth++ == 0 && playing && resume_sector < 0) {
 		resume_sector = music_position();
 		CdControlB(CdlPause, 0, 0);
 	}
 }
 
+static void resume_music(void)
+{
+	int sector = resume_sector;
+
+	resume_sector = -1;
+	if (sector >= track_end)
+		sector = track_start;
+	start_read(sector);
+}
+
 void audio_cd_end(void)
 {
-	if (--cd_depth == 0 && resume_sector >= 0) {
-		int sector = resume_sector;
+	if (--cd_depth == 0 && batch_depth == 0 && resume_sector >= 0)
+		resume_music();
+}
 
-		resume_sector = -1;
-		if (sector >= track_end)
-			sector = track_start;
-		start_read(sector);
-	}
+void audio_batch_begin(void)
+{
+	batch_depth++;
+}
+
+void audio_batch_end(void)
+{
+	if (--batch_depth == 0 && cd_depth == 0 && resume_sector >= 0)
+		resume_music();
+}
+
+int audio_cd_paused(void)
+{
+	return resume_sector >= 0 || !playing;
 }
 
 /* ---------------------------------------------------------------- efectos */

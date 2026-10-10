@@ -391,12 +391,66 @@ static int op_size(const OpInfo *info)
 	return n;
 }
 
-/* Mientras se lee una linea se cargan los efectos que vienen, para no leer el CD justo cuando deben sonar */
+#define LOOKAHEAD_IMAGES 32
+
+static void add_image(uint16_t *ids, int *n, int id)
+{
+	int i;
+
+	if (!id || *n >= LOOKAHEAD_IMAGES)
+		return;
+	for (i = 0; i < *n; i++)
+		if (ids[i] == id)
+			return;
+	ids[(*n)++] = (uint16_t)id;
+}
+
+/* Recorre el guion hacia adelante (sin entrar en decisiones) juntando las imagenes que se van a mostrar y cargando
+ * los efectos que van a sonar. `steps` limita cuantas instrucciones mira. */
+static int look_ahead(int steps, uint16_t *ids)
+{
+	uint32_t pc = vm.pc;
+	int n = 0, k;
+
+	for (k = 0; k < steps && pc < vm.ch.code_size && n < LOOKAHEAD_IMAGES; k++) {
+		const uint8_t *p = vm.ch.code + pc;
+		const OpInfo *info = op_info(p[0]);
+
+		if (!info || p[0] == OP_MENU || p[0] == OP_CALL || p[0] == OP_RETURN || p[0] == OP_LOAD_CHAPTER ||
+		    p[0] == OP_END || p[0] == OP_HALT)
+			break;
+		if (p[0] == OP_JUMP) {
+			pc = rd32(p + 1);                /* salto fijo: se sigue el camino */
+			continue;
+		}
+		if (p[0] == OP_SFX_PLAY)
+			audio_preload(rd16(p + 1));
+		if (p[0] == OP_SCENE || p[0] == OP_BACKGROUND)
+			add_image(ids, &n, rd16(p + 1));
+		if (p[0] == OP_SHOW) {
+			const uint8_t *anim = scene_anim(&vm, rd16(p + 7)), *ev;
+			int e;
+
+			add_image(ids, &n, rd16(p + 2));
+			if (anim && anim[0])                 /* cuadros que la animacion muestra despues */
+				for (e = 0, ev = anim + 3 + 15 * anim[0]; e < anim[2]; e++, ev += 7)
+					if (!(ev[4] & 2))
+						add_image(ids, &n, rd16(ev + 2));
+		}
+		pc += 1 + op_size(info);
+	}
+	return n;
+}
+
+/* Mientras se lee una linea se cargan los efectos que vienen, si la musica no suena (si suena, se cargan junto con la
+ * proxima escena, en la misma pausa) */
 static void preload_upcoming(void)
 {
 	uint32_t pc = vm.pc;
 	int n;
 
+	if (!audio_cd_paused())
+		return;
 	for (n = 0; n < 48 && pc < vm.ch.code_size; n++) {
 		const uint8_t *p = vm.ch.code + pc;
 		const OpInfo *info = op_info(p[0]);
@@ -861,12 +915,23 @@ static void run_vm(void)
 {
 	VmEvent ev;
 
+	audio_batch_begin();             /* todas las lecturas de este paso comparten una sola pausa de la musica */
 	vm.now = (uint32_t)video_frames();
 	ev = vm_run(&vm);
 
 	if (ev == VM_EV_TRANSITION)
 		begin_transition();          /* antes de cargar lo nuevo: guarda el cuadro anterior */
-	scene_sync();
+	{
+		int changed = scene_dirty && !skip_mode;
+
+		scene_sync();
+		/* si ya hubo que leer el disco, se aprovecha la pausa para traer las imagenes de las escenas que siguen */
+		if (changed && audio_cd_paused()) {
+			uint16_t ids[LOOKAHEAD_IMAGES];
+
+			res_prefetch(ids, look_ahead(600, ids));
+		}
+	}
 	switch (ev) {
 	case VM_EV_SAY:
 		start_say();
@@ -892,6 +957,7 @@ static void run_vm(void)
 	default:
 		break;
 	}
+	audio_batch_end();
 }
 
 static void clear_scene(void)

@@ -51,6 +51,11 @@ Camara animada, packs de carga (Fase 9) y miniaturas en ranuras y galeria (opcio
 ## Audio
 - RAM de la SPU: 4 KB del sistema, zona de efectos (~284 KB, se vacia entera al llenarse) y 4 espacios de 56 KB para ambientes (voces 0-3). Efectos en las voces 4-23.
 - Al mostrar una linea se precargan los efectos de las siguientes instrucciones; al saltar (R1) no suenan los efectos.
+
+## Lecturas del CD
+- `DATA/FILES.BIN` (lo arma `build_game.py` en dos pasadas): nombre, sector y tamano de cada archivo, ordenados por nombre. `cd_find` busca ahi en vez de `CdSearchFile`.
+- Cada paso de la VM (`run_vm`) agrupa sus lecturas con `audio_batch_begin/end`: la musica XA se pausa una sola vez.
+- Si en ese paso cambio la escena y la musica ya esta en pausa (o no suena), `look_ahead` recorre el guion (sigue los saltos fijos, para en menus y llamadas) y `res_prefetch` trae a un cache en RAM de 320 KB las imagenes que vienen, leyendo en orden de sector los archivos contiguos de una vez. Asi la siguiente escena no vuelve a cortar la musica.
 - Los efectos de mas de 192 KB se convierten a 11 kHz (`tools/audio/convert.py`) para caber en su zona.
 
 ## Zona segura

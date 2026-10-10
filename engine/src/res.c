@@ -125,6 +125,106 @@ static int take_clut(void)
 
 static const Image *load_image(int image_id);
 
+/* ---------------------------------------------------------------- cache de archivos en RAM (D7)
+ * Cuando ya hay que pausar la musica para leer, se aprovecha la pausa para traer tambien las imagenes de las escenas
+ * que vienen; despues se descomprimen a VRAM desde aqui sin tocar el CD (sin otro corte de musica). Los archivos
+ * contiguos en el disco se leen de una sola vez. */
+#define CACHE_BYTES (320 * 1024)
+#define MAX_CACHED 96
+#define MAX_PREFETCH 32
+#define MAX_GAP_SECTORS 4                /* se leen de paso huecos chicos entre archivos para no hacer otra busqueda */
+
+static uint8_t cache_buf[CACHE_BYTES] __attribute__((aligned(4)));
+static struct {
+	int id, off, size;
+} cached[MAX_CACHED];
+static int cached_count, cache_used;
+
+static const uint8_t *cache_lookup(int image_id, int *size)
+{
+	int i;
+
+	for (i = 0; i < cached_count; i++)
+		if (cached[i].id == image_id) {
+			*size = cached[i].size;
+			return cache_buf + cached[i].off;
+		}
+	return 0;
+}
+
+static int in_list(int id, const uint16_t *ids, int n)
+{
+	int i;
+
+	for (i = 0; i < n; i++)
+		if (ids[i] == id)
+			return 1;
+	return 0;
+}
+
+void res_prefetch(const uint16_t *ids, int n)
+{
+	int want[MAX_PREFETCH], lba[MAX_PREFETCH], size[MAX_PREFETCH], count = 0, i, j, kept = 0, used = 0;
+	char path[24];
+
+	/* 1. se quedan (compactadas al inicio) las que se van a seguir necesitando */
+	for (i = 0; i < cached_count; i++)
+		if (in_list(cached[i].id, ids, n)) {
+			int bytes = (cached[i].size + 2047) & ~2047;
+
+			if (cached[i].off != used)
+				memmove(cache_buf + used, cache_buf + cached[i].off, bytes);
+			cached[kept] = cached[i];
+			cached[kept].off = used;
+			used += bytes;
+			kept++;
+		}
+	cached_count = kept;
+	cache_used = used;
+
+	/* 2. las que faltan (ni en VRAM ni aqui), ordenadas por posicion en el disco */
+	for (i = 0; i < n && count < MAX_PREFETCH; i++) {
+		int l, s;
+
+		if (res_peek(ids[i]) || cache_lookup(ids[i], &s))
+			continue;
+		sprintf(path, "\\DATA\\I%04d.IMG", ids[i]);
+		if (cd_find(path, &l, &s) != 0)
+			continue;
+		for (j = count; j > 0 && lba[j - 1] > l; j--) {
+			want[j] = want[j - 1];
+			lba[j] = lba[j - 1];
+			size[j] = size[j - 1];
+		}
+		want[j] = ids[i];
+		lba[j] = l;
+		size[j] = s;
+		count++;
+	}
+
+	/* 3. tramos contiguos de una sola lectura, mientras quepan */
+	for (i = 0; i < count;) {
+		int first = lba[i], end = lba[i] + (size[i] + 2047) / 2048, k = i + 1, sectors;
+
+		while (k < count && lba[k] >= end && lba[k] - end <= MAX_GAP_SECTORS &&
+		       (lba[k] + (size[k] + 2047) / 2048 - first) * 2048 <= CACHE_BYTES - cache_used)
+			end = lba[k] + (size[k] + 2047) / 2048, k++;
+		sectors = end - first;
+		if (sectors * 2048 > CACHE_BYTES - cache_used || cached_count + (k - i) > MAX_CACHED)
+			break;
+		if (cd_read_sectors(first, sectors, cache_buf + cache_used) != 0)
+			break;
+		for (j = i; j < k; j++) {
+			cached[cached_count].id = want[j];
+			cached[cached_count].off = cache_used + (lba[j] - first) * 2048;
+			cached[cached_count].size = size[j];
+			cached_count++;
+		}
+		cache_used += sectors * 2048;
+		i = k;
+	}
+}
+
 #define SNAP_GY 16                      /* copia de pantalla: banda baja de la zona de fondos, 320 x 192 filas */
 #define SNAP_GH 12
 #define SNAP_MARK 0xFF
@@ -185,6 +285,7 @@ static const Image *load_image(int image_id)
 	char path[24];
 	int i, size, kind, w, h, region, gw, gh, big, gx = 0, gy = 0;
 	Entry *e;
+	const uint8_t *data;
 
 	for (i = 0; i < MAX_ENTRIES; i++)
 		if (entries[i].used && entries[i].id == image_id) {
@@ -192,16 +293,20 @@ static const Image *load_image(int image_id)
 			return &entries[i].img;
 		}
 
-	sprintf(path, "\\DATA\\I%04d.IMG", image_id);
-	size = cd_read_file(path, file_buf, FILE_BYTES);
+	data = cache_lookup(image_id, &size);         /* ya leida de antemano: sin tocar el CD */
+	if (!data) {
+		sprintf(path, "\\DATA\\I%04d.IMG", image_id);
+		size = cd_read_file(path, file_buf, FILE_BYTES);
+		data = file_buf;
+	}
 	if (size < 24 + 512 + 8) {
 		res_fail_read++;
 		printf("res: no se pudo leer %s\n", path);
 		return 0;
 	}
-	kind = file_buf[4];
-	w = file_buf[14] | (file_buf[15] << 8);
-	h = file_buf[16] | (file_buf[17] << 8);
+	kind = data[4];
+	w = data[14] | (data[15] << 8);
+	h = data[16] | (data[17] << 8);
 	region = kind == 0 ? 1 : 0;
 	gw = (w / 2 + CELL_WORDS - 1) / CELL_WORDS;
 	gh = (h + CELL_ROWS - 1) / CELL_ROWS;
@@ -255,7 +360,7 @@ static const Image *load_image(int image_id)
 			memset(&grid[region][i][gx], (int)(e - entries) + 1, gw);
 	}
 	e->used = 1;
-	if ((big ? img_load_big : img_load)(&e->img, file_buf, size, region_x[region] + gx * CELL_WORDS, gy * CELL_ROWS,
+	if ((big ? img_load_big : img_load)(&e->img, data, size, region_x[region] + gx * CELL_WORDS, gy * CELL_ROWS,
 	                                    CLUT_BG_Y + (e->clut_bit >= 0 ? e->clut_bit : 0)) != 0) {
 		free_entry(e);
 		return 0;

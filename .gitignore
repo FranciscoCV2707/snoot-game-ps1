@@ -7,3 +7,4 @@ original/
 experiments/*/build/
 engine/build/
 dist/
+.sentry-native/

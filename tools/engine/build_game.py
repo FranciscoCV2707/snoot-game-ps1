@@ -203,6 +203,50 @@ def dev_chapter_table(program, meta):
     return blob
 
 
+RAW_SECTOR = 2352
+SPECIAL_NAMES = (chr(0), chr(1))      # entradas . y .. de un directorio ISO 9660
+FILE_ENTRY = "<12sII"            # nombre, sector, tamano: tabla de sectores FILES.BIN (el motor no usa CdSearchFile)
+
+
+def iso_files(bin_path):
+    """Archivos del disco ya armado (ISO 9660 en sectores de 2352 bytes): nombre -> (sector, tamano), raiz y DATA."""
+    raw = Path(bin_path).read_bytes()
+
+    def sector(n):
+        return raw[n * RAW_SECTOR + 24:n * RAW_SECTOR + 24 + 2048]
+
+    def records(lba, size):
+        for k in range((size + 2047) // 2048):
+            data, i = sector(lba + k), 0
+            while i < len(data) and data[i]:
+                length = data[i]
+                rec_lba, rec_size = struct.unpack_from("<I", data, i + 2)[0], struct.unpack_from("<I", data, i + 10)[0]
+                name = data[i + 33:i + 33 + data[i + 32]].decode("ascii", "replace").split(";")[0]
+                yield name, rec_lba, rec_size, data[i + 25] & 2
+                i += length
+
+    pvd = sector(16)
+    root_lba, root_size = struct.unpack_from("<I", pvd, 156 + 2)[0], struct.unpack_from("<I", pvd, 156 + 10)[0]
+    out = {}
+    for name, lba, size, is_dir in records(root_lba, root_size):
+        if is_dir and name == "DATA":
+            for sub, sub_lba, sub_size, sub_dir in records(lba, size):
+                if not sub_dir and sub not in SPECIAL_NAMES:
+                    out[sub] = (sub_lba, sub_size)
+        elif not is_dir and name not in SPECIAL_NAMES:
+            out[name] = (lba, size)
+    return out
+
+
+def file_table(files, count=None):
+    """FILES.BIN: "FTB1", cantidad u16 y entradas ordenadas por nombre (busqueda binaria en el motor)."""
+    entries = sorted(files.items())
+    blob = b"FTB1" + struct.pack("<H", count if count is not None else len(entries))
+    for name, (lba, size) in entries:
+        blob += struct.pack(FILE_ENTRY, name.encode("ascii")[:12], lba, size)
+    return blob
+
+
 def text_block(raw, index):
     off, size = struct.unpack_from("<II", raw, 6 + 8 * index)
     return raw[off:off + size]
@@ -254,6 +298,11 @@ def main():
         if path.exists():
             sources.append((path.name, path.read_bytes()))
 
+    # tabla de sectores: va primero en DATA con un relleno del mismo tamano; despues de armar el disco se escribe la
+    # tabla real (mismo tamano, mismas posiciones) y se arma de nuevo
+    table_size = len(file_table({n: (0, 0) for n, _ in sources} | {"FILES.BIN": (0, 0), "MUSIC.XA": (0, 0),
+                                                                     "SYSTEM.CNF": (0, 0), "SNOOT.EXE": (0, 0)}))
+    sources.insert(0, ("FILES.BIN", bytes(table_size)))
     names = []
     for name, data in sources:
         (WORK / name).write_bytes(data)
@@ -266,7 +315,18 @@ def main():
         run(["cmake", "--preset", "default", "--fresh", "."], cwd=ENGINE, env=env)   # cache de otra configuracion
     run(["cmake", "--build", "build"], cwd=ENGINE, env=env)
     shutil.copy(ENGINE / "build" / "snoot.exe", WORK / "snoot.exe")
-    run([SDK_BIN / "mkpsxiso.exe", "-y", "-o", "snoot_game.bin", "-c", "snoot_game.cue", "iso.xml"], cwd=WORK)
+    run([SDK_BIN / "mkpsxiso.exe", "-y", "-o", "snoot_game.bin", "-c", "snoot_game.cue", "iso.xml"], cwd=WORK,
+        capture_output=True)
+    files = iso_files(WORK / "snoot_game.bin")
+    table = file_table(files)
+    if len(table) != table_size:
+        raise SystemExit(f"FILES.BIN cambio de tamano ({len(table)} != {table_size})")
+    (WORK / "FILES.BIN").write_bytes(table)
+    run([SDK_BIN / "mkpsxiso.exe", "-y", "-o", "snoot_game.bin", "-c", "snoot_game.cue", "iso.xml"], cwd=WORK,
+        capture_output=True)
+    if iso_files(WORK / "snoot_game.bin") != files:
+        raise SystemExit("las posiciones del disco cambiaron entre pasadas")
+    print(f"tabla de sectores: {len(files)} archivos")
     print(f"capitulos {chapters}, {len(images)} imagenes, inicio {args.start}")
     print("Disco listo:", WORK / "snoot_game.cue")
     return 0

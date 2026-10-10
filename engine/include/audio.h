@@ -36,3 +36,8 @@ int audio_ambient_current(int slot);
 
 void audio_cd_begin(void);
 void audio_cd_end(void);
+/* Lote de lecturas: la musica se pausa con la primera lectura del lote y se reanuda una sola vez al final */
+void audio_batch_begin(void);
+void audio_batch_end(void);
+/* La musica ya esta pausada (o no suena): leer ahora no agrega otro corte */
+int audio_cd_paused(void);

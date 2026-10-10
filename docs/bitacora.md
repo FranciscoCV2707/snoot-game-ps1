@@ -1,5 +1,12 @@
 # Bitácora
 
+## 2026-10-10 - Cargas agrupadas (D7)
+Hecho:
+- Tabla de sectores `FILES.BIN` en el disco; `cd_find` ya no lee el directorio del CD en cada carga.
+- Las lecturas de cada paso de la VM comparten una sola pausa de la musica.
+- Precarga de las imagenes de las escenas siguientes en un cache de RAM (320 KB) aprovechando esa pausa.
+- Disolver continuo con brillo de texturas en vez de pasos.
+
 ## 2026-10-09 - Fases 8 y 9, inicio de la 10
 Hecho:
 - Audio (`engine/src/audio.c`): XA por carriles, ambientes y efectos en la SPU; los efectos de mas de 192 KB se convierten a 11 kHz.
