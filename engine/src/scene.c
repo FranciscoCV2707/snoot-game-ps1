@@ -88,6 +88,11 @@ void scene_look(const Vm *vm, const VmSprite *s, int t, SpriteLook *out)
 			out->alpha = t < 36 ? t * 255 / 36 : (96 - t) * 255 / 60;
 		return;
 	}
+	if (s->pos < pos_count) {
+		out->xa = pos_x[s->pos];
+		out->ya = pos_y[s->pos];
+	}
+	/* con animacion manda su posicion: el compilador ya parte de la posicion con nombre (`at sright: xalign 1.2`) */
 	if (anim && anim[0]) {
 		int n = anim[0], loop = anim[1] & 1, events = anim[2], end = rd16(anim + 3 + 15 * (n - 1)), i;
 		const uint8_t *k0, *k1, *ev = anim + 3 + 15 * n;
@@ -128,10 +133,6 @@ void scene_look(const Vm *vm, const VmSprite *s, int t, SpriteLook *out)
 				out->image = rd16(ev + 2);
 				out->flip = ev[4] & 1;
 			}
-	}
-	if (s->pos < pos_count) {
-		out->xa = pos_x[s->pos];
-		out->ya = pos_y[s->pos];
 	}
 }
 

@@ -31,7 +31,7 @@ const uint8_t *scene_anim(const Vm *vm, int anim);
 /* Sprites con imagen ordenados de atras (0) hacia adelante; devuelve cuantos */
 int scene_sorted(const Vm *vm, const VmSprite **order);
 /* Aspecto del sprite `t` cuadros despues de empezar su animacion (SCENE_SETTLED: al terminar; si se repite, en su
- * primera clave). La posicion con nombre, si tiene, manda sobre la de la animacion. */
+ * primera clave). Con animacion manda su posicion (ya parte de la posicion con nombre); sin ella, la con nombre. */
 void scene_look(const Vm *vm, const VmSprite *s, int t, SpriteLook *out);
 /* Imagenes que la animacion del sprite muestra en sus eventos (para cargarlas antes); devuelve cuantas */
 int scene_event_images(const Vm *vm, const VmSprite *s, uint16_t *out, int max);
