@@ -29,6 +29,7 @@ static uint8_t grid[2][GRID_H][GRID_W];     /* 0 libre, si no indice de entrada 
 static uint16_t clut_used;
 static uint32_t clock_now = 1;
 volatile uint32_t res_fail_read, res_fail_vram, res_fail_clut;   /* contadores para la prueba automatica */
+volatile uint32_t res_fail_log[16];                               /* ultimas imagenes que no cupieron (+0x10000: paletas) */
 static int failed[16], failed_count;      /* imagenes que no se pudieron cargar en esta escena */
 
 static const int region_x[2] = { VRAM_SPRITE_X, VRAM_BG_X };
@@ -229,6 +230,7 @@ static const Image *load_image(int image_id)
 				break;
 			}
 			if (!evict_one()) {
+				res_fail_log[(res_fail_vram + res_fail_clut) & 15] = (uint32_t)image_id;
 				res_fail_vram++;
 				printf("res: sin espacio en VRAM para %s\n", path);
 				return 0;
@@ -238,6 +240,7 @@ static const Image *load_image(int image_id)
 		while (e->clut_bit < 0 && evict_one())
 			e->clut_bit = take_clut();
 		if (e->clut_bit < 0) {
+			res_fail_log[(res_fail_vram + res_fail_clut) & 15] = (uint32_t)image_id | 0x10000;
 			res_fail_clut++;
 			printf("res: sin paletas libres\n");
 			return 0;

@@ -33,6 +33,7 @@ TEXT_IMAGES = {f"text{i}" for i in range(1, 10)}                 # textos de ins
 NO_DITHER = TEXT_IMAGES | {"vvurm_drama_poster", "jewlcase", "fastforward"}   # imagenes con texto: sin tramado
 SCALE_OVERRIDE = {"ui logo": 3, **{name: 3 for name in TEXT_IMAGES}}   # el logo del titulo se dibuja mas grande (pantalla completa de 320x240)
 HALF_AREA = 90000            # sprites de mas de ~90000 pixeles se guardan a media resolucion
+MAX_SPRITE_ROWS = 256       # una imagen no puede cruzar la fila 256 de VRAM: los mas altos van a media resolucion
 DITHER_STRENGTH = 2
 KIND_BG, KIND_SPRITE, KIND_SOLID, KIND_EMPTY = 0, 1, 2, 3
 KIND_NAMES = {0: "fondo", 1: "sprite", 2: "color", 3: "vacio"}
@@ -122,7 +123,7 @@ def phase1_run(task):
         crop = small.crop((x0, y0, x1, y1))
         body = sa[y0:y1, x0:x1]
         semi = float(((body > 24) & (body < 231)).sum()) / max(1, int((body > 24).sum()))
-        if crop.width * crop.height > HALF_AREA:
+        if crop.width * crop.height > HALF_AREA or crop.height > MAX_SPRITE_ROWS:
             half = True
             x0, y0 = (x0 + ox) // 2, (y0 + oy) // 2
             ox = oy = 0

@@ -177,10 +177,15 @@ void img_draw_flip(const Image *img, int layer, int screen_x, int screen_y, int 
  * Con espejo o zoom cada pieza es un POLY_FT4 (la GPU escala la textura); si no, un SPRT. */
 void img_draw_ex(const Image *img, int layer, int screen_x, int screen_y, int flip, int zoom, int r, int g, int b)
 {
-	int col = 0;
+	int col = 0, fw = img->full_w;
 
 	if (!img->loaded)
 		return;
+	if (img->flags & IMG_HALF) {
+		/* bitmap a media resolucion (sprites muy altos): se dibuja al doble; x, y y el bitmap van en medios */
+		zoom *= 2;
+		fw = (img->full_w + 1) / 2;
+	}
 	while (col < img->w) {
 		int word_x = img->vram_x + col / 2;
 		int page_x = word_x & ~63;
@@ -192,7 +197,7 @@ void img_draw_ex(const Image *img, int layer, int screen_x, int screen_y, int fl
 			piece_w = 256 - u;
 		if (flip || zoom != 64) {
 			POLY_FT4 *p = (POLY_FT4 *)video_alloc(sizeof(POLY_FT4));
-			int lx = flip ? img->full_w - (img->x + col + piece_w) : img->x + col;
+			int lx = flip ? fw - (img->x + col + piece_w) : img->x + col;
 			int x0 = screen_x + lx * zoom / 64, x1 = screen_x + (lx + piece_w) * zoom / 64;
 			int y0 = screen_y + img->y * zoom / 64, y1 = screen_y + (img->y + img->h) * zoom / 64;
 			int ua = flip ? u + piece_w - 1 : u, ub = flip ? u : u + piece_w - 1;

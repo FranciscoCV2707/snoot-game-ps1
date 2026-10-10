@@ -41,6 +41,7 @@ local outdir = '%(outdir)s'
 local mem = PCSX.getMemPtr()
 local shot_addr, quit_addr, state_addr, vm_addr = %(shot)d, %(quit)d, %(state)d, %(vm)d
 local watch = {%(watch)s}
+local failog = %(failog)s
 local function u32(addr) return ffi.cast('uint32_t*', mem + addr)[0] end
 local seen, log_text, frames = 0, '', 0
 EMUTEST_LISTENER = PCSX.Events.createEventListener('GPU::Vsync', function()
@@ -65,6 +66,7 @@ EMUTEST_LISTENER = PCSX.Events.createEventListener('GPU::Vsync', function()
     local fin = 'END frames=' .. frames .. ' state=' .. tostring(u32(state_addr)) .. ' cap=' .. tostring(u32(vm_addr + 24)) ..
       ' pc=' .. tostring(u32(vm_addr + 28))
     for k, a in pairs(watch) do fin = fin .. ' ' .. k .. '=' .. tostring(u32(a)) end
+    if failog then fin = fin .. ' fallas='; for j = 0, 15 do fin = fin .. tostring(u32(failog + 4 * j)) .. ',' end end
     local f = Support.File.open(outdir .. '/final.txt', 'TRUNCATE')
     f:write(fin)
     f:close()
@@ -138,6 +140,7 @@ def run(steps, out, keep_card=False, timeout=900, max_frames=None):
     script.write_text(LUA % {"names": names, "outdir": out.as_posix(), "shot": sym["autotest_shot"], "quit": sym["autotest_quit"],
                              "state": sym["state"], "vm": sym["vm"],
                              "watch": ", ".join(f"{n} = {sym[n]}" for n in WATCH if n in sym),
+                             "failog": sym.get("res_fail_log", "nil"),
                              "max_frames": max_frames or last + 3000}, encoding="utf-8")
     args = [str(REDUX), "-no-ui", "-run", "-fastboot", "-bios", str(BIOS), "-iso", str(CUE),
             "-memcard1", str(out / "card1.mcd"), "-exec", f"dofile('{script.as_posix()}')"]

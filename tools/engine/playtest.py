@@ -72,13 +72,13 @@ def main():
     rows = dev_rows()
     picks = args.rows or default_rows(rows)
     lines = ["# Prueba de recorrido (autoplay en PCSX-Redux)", "",
-             "| Fila | Entrada | Resultado | Capitulo / pc | Imagenes sin cargar (CD / VRAM / paletas) | Cuadros |",
-             "|---|---|---|---|---|---|"]
+             "| Fila | Entrada | Resultado | Capitulo / pc | Imagenes sin cargar (CD / VRAM / paletas) | Cuadros | Ultimas que no cupieron |",
+             "|---|---|---|---|---|---|---|"]
     for row in picks:
         info = play(row, ROOT / "build" / "emutest" / f"play{row:02d}", args.max_frames)
         line = (f"| {row} | {rows[row]} | {info['result']} | {info.get('cap', '?')} / {info.get('pc', '?')} | "
                 f"{info.get('res_fail_read', '?')} / {info.get('res_fail_vram', '?')} / {info.get('res_fail_clut', '?')} | "
-                f"{info.get('frames', '?')} |")
+                f"{info.get('frames', '?')} | {info.get('fallas', '')} |")
         print(line, flush=True)
         lines.append(line)
         REPORT.parent.mkdir(parents=True, exist_ok=True)

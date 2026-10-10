@@ -48,7 +48,7 @@ class Images:
             head = struct.unpack_from(HEADER, raw, 0)
             kind, full_w, full_h = head[1], head[3], head[4]
             solid = head[9:13]
-            self.cache[iid] = (kind, full_w, full_h, solid, load_img(path), bool(head[2] & 4))
+            self.cache[iid] = (kind, full_w, full_h, solid, load_img(path), bool(head[2] & 4), bool(head[2] & 2))
         return self.cache[iid]
 
 
@@ -70,13 +70,17 @@ def compose(images, draws):
             continue
         iid, x, y, flip = d[:4]
         zoom, tint = (d[4], tuple(d[5:8])) if len(d) > 4 else (64, (128, 128, 128))
-        kind, full_w, full_h, solid, bitmap, translucent = images.get(iid)
+        kind, full_w, full_h, solid, bitmap, translucent, half = images.get(iid)
         if kind == 2:
             canvas[:] = solid[:3]
             continue
         if bitmap is None:
             continue
         rgb, mask, bx, by = bitmap
+        if half:                           # media resolucion: el motor la dibuja al doble
+            rgb = np.asarray(Image.fromarray(rgb).resize((rgb.shape[1] * 2, rgb.shape[0] * 2), Image.NEAREST))
+            mask = np.asarray(Image.fromarray(mask).resize((mask.shape[1] * 2, mask.shape[0] * 2), Image.NEAREST))
+            bx, by = bx * 2, by * 2
         if flip:
             rgb, mask = rgb[:, ::-1], mask[:, ::-1]
             bx = full_w - bx - rgb.shape[1]

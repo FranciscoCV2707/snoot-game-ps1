@@ -719,6 +719,8 @@ static void draw_scene(void)
 
 		scene_look(&vm, s, skip_mode ? SCENE_SETTLED : (int)(video_frames() - s->shown_at), &lk);
 		img = scene_image(lk.image);
+		if (!img && lk.image != s->image)
+			img = scene_image(s->image);     /* cuadro de animacion que no cupo en VRAM: se queda la imagen base */
 		if (!img || img->kind == 3 || lk.alpha < SCENE_HIDDEN_ALPHA)
 			continue;
 		if (layer < LAYER_SPRITE0)
