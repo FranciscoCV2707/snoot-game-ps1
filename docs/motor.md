@@ -48,6 +48,11 @@ Camara animada, packs de carga (Fase 9) y miniaturas en ranuras y galeria (opcio
 - Dissolve continuo: la escena nueva se dibuja con brillo t (modulacion de color de las texturas, `img_brightness`) y encima se suma la copia de la anterior con brillo 1 - t. Fundido a negro: la copia se oscurece multiplicada y la escena nueva entra subiendo el brillo. Fundido a blanco: suma de un gris.
 - vpunch/hpunch desplazan toda la escena; MoveTransition lleva cada sprite de donde estaba (o desde el borde) a su posicion nueva.
 
+## Caja de texto
+- Replica `config.window = "auto"` con `Dissolve(.2)`: aparece con cada linea (el texto empieza cuando termino de aparecer), se queda vacia en las pausas siguientes y se oculta antes de `scene` y de las decisiones. `window show/hide` la fijan y `window auto` vuelve al modo automatico (`TEXTBOX`, docs/bytecode.md); con una transicion de un cuadro o menos el cambio es instantaneo.
+- El fundido dura 12 cuadros: a medio camino se resta un gris (no hay mezcla variable) y al final se oscurece al 50%.
+- Si la caja sigue visible durante un dissolve o fundido, la franja de la caja en la copia se dibuja al doble de brillo para no oscurecerla dos veces; si se oculta, se va con la copia.
+
 ## Audio
 - RAM de la SPU: 4 KB del sistema, zona de efectos (~284 KB, se vacia entera al llenarse) y 4 espacios de 56 KB para ambientes (voces 0-3). Efectos en las voces 4-23.
 - Al mostrar una linea se precargan los efectos de las siguientes instrucciones; al saltar (R1) no suenan los efectos.

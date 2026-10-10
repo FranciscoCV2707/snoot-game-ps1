@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from tools.script_compiler import assemble, textfmt
-from tools.script_compiler.lower import Inst, parse_transition
+from tools.script_compiler.lower import Inst, parse_transition, textbox_mode
 from tools.script_compiler.opcodes import OP_CODE, OPS
 from tools.simulator.report import extras_available
 from tools.simulator.vm import VM, Coverage
@@ -44,6 +44,14 @@ def test_parse_transition():
     assert parse_transition("MoveTransition(0.5, time_warp=_ease_in_time_warp)") == (5, 30, 0, 1)
     assert parse_transition("None") == (0, 0, 0, 0)
     assert parse_transition("Frobnicate(2)") is None
+
+
+def test_textbox_mode():
+    assert textbox_mode("hide", None) == 0
+    assert textbox_mode("auto", None) == 1
+    assert textbox_mode("show", "Dissolve(0.0001)") == 2 | 4
+    assert textbox_mode("hide", "Dissolve(0.0)") == 0 | 4
+    assert textbox_mode("hide", "Dissolve(0.5)") == 0
 
 
 def test_extras_logic():

@@ -20,6 +20,7 @@ SPECIAL_TEXTSCROLL, SPECIAL_CREDITS = 1, 2
 TEXTSCROLL_SCALE = 0.4      # tamano del chat en la PS1 respecto al original (legible en 320 px)
 SHOW_RANDOM_FIRST = ("text1",)
 SCENE_FLIP = 0x8000            # bit alto del anim de SCENE: fondo espejado (`scene moes pizza mirrored`)
+TEXTBOX_INSTANT = 4            # bit del modo de TEXTBOX: mostrar u ocultar la caja sin fundido
 NUM = r"\s*(-?[\d.]+)\s*"
 PAN_RE = re.compile(rf"\bPan\(\s*\({NUM},{NUM}\)\s*,\s*\({NUM},{NUM}\)\s*,{NUM}")
 
@@ -521,8 +522,7 @@ class Lowerer:
         return state
 
     def n_Window(self, n, state):
-        mode = {"hide": 0, "auto": 1, "show": 2}.get(n.kind, 1)
-        self.emit("TEXTBOX", n.line, mode=mode)
+        self.emit("TEXTBOX", n.line, mode=textbox_mode(n.kind, n.trans))
         return state
 
     def n_Pause(self, n, state):
@@ -1193,6 +1193,15 @@ def is_light(color):
     except ValueError:
         return False
     return (r + g + b) / 3 > 128
+
+
+def textbox_mode(kind, trans):
+    """Modo de TEXTBOX para `window hide/auto/show [transicion]`; las transiciones de un cuadro o menos son instantaneas."""
+    mode = {"hide": 0, "auto": 1, "show": 2}.get(kind, 1)
+    spec = parse_transition(trans) if trans else None
+    if spec is not None and spec[1] <= 1:
+        mode |= TEXTBOX_INSTANT
+    return mode
 
 
 def parse_transition(expr):

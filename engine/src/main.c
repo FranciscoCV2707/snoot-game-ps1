@@ -61,6 +61,12 @@ static Vm vm;
 static State state;
 static TextRun run;
 static int scene_dirty, show_box = 1, debug;
+/* Caja de texto como config.window = "auto" de Ren'Py: aparece con cada linea, se queda (vacia) en las pausas y se
+ * oculta antes de `scene` y de las decisiones; `window show/hide` la fijan. Entra y sale con un fundido de 0.2 s. */
+#define BOX_FADE 12
+#define TEXTBOX_INSTANT 4
+static int win_auto = 1, win_on, box_level;
+static int snap_box;                        /* la copia de la transicion lleva la caja completa */
 static int pause_left, say_seen_before;
 static int bg_start;                        /* cuadro en que aparecio el fondo (inicio de su Pan) */
 static uint8_t seen[SEEN_BYTES];
@@ -324,6 +330,27 @@ static void notify(void *user, int opcode, const int32_t *args, int nargs)
 		bg_start = video_frames();
 		gallery_mark(args[0]);
 		scene_dirty = 1;
+		if (win_auto)
+			win_on = 0;
+		break;
+	case OP_MENU:
+		if (win_auto)
+			win_on = 0;
+		break;
+	case OP_SAY:
+	case OP_SAYX:
+		if (win_auto)
+			win_on = 1;
+		break;
+	case OP_TEXTBOX:
+		if ((args[0] & 3) == 1) {
+			win_auto = 1;
+		} else {
+			win_auto = 0;
+			win_on = (args[0] & 3) == 2;
+		}
+		if (args[0] & TEXTBOX_INSTANT)
+			box_level = win_on ? BOX_FADE : 0;
 		break;
 	case OP_SHOW:
 		gallery_mark(args[1]);
@@ -715,18 +742,23 @@ static int transition_brightness(void)
 
 static void draw_transition(void)
 {
-	int p, v, white = trans_type == TR_FADE_WHITE;
+	int p, v, b, white = trans_type == TR_FADE_WHITE;
+	/* si la caja sigue visible, la de la copia (oscurecida al 50%) se deshace al doble de brillo: si no, se
+	 * oscureceria dos veces */
+	int band = snap_box && box_level >= BOX_FADE ? BOX_Y : SCREEN_H;
 
 	if (state != ST_TRANS)
 		return;
 	p = trans_t * 256 / trans_len;
 	if (trans_type == TR_DISSOLVE && snap_x >= 0) {
-		video_snapshot_draw(LAYER_FX, snap_x, snap_y, 2, (256 - p) * 128 / 256);     /* suma */
+		b = (256 - p) * 128 / 256;
+		video_snapshot_draw(LAYER_FX, snap_x, snap_y, 2, b, band, 2 * b);     /* suma */
 	} else if (trans_type == TR_FADE) {
 		if (trans_t < trans_a) {
 			/* salida: la copia de la escena anterior se oscurece de verdad (multiplicada), no restada */
+			b = (trans_a - trans_t) * 128 / (trans_a ? trans_a : 1);
 			if (snap_x >= 0)
-				video_snapshot_draw(LAYER_FX, snap_x, snap_y, 0, (trans_a - trans_t) * 128 / (trans_a ? trans_a : 1));
+				video_snapshot_draw(LAYER_FX, snap_x, snap_y, 0, b, band, 2 * b);
 		} else if (trans_t < trans_a + trans_b) {
 			video_rect(LAYER_FX, 0, VIEW_Y, SCREEN_W, VIEW_H, 0, 0, 0, 0);
 		}
@@ -736,7 +768,7 @@ static void draw_transition(void)
 			v = trans_t * 255 / (trans_a ? trans_a : 1);
 			video_rect(LAYER_FX, 0, VIEW_Y, SCREEN_W, VIEW_H, v, v, v, 2);  /* encima de la copia */
 			if (snap_x >= 0)
-				video_snapshot_draw(LAYER_FX, snap_x, snap_y, 0, 128);
+				video_snapshot_draw(LAYER_FX, snap_x, snap_y, 0, 128, band, 255);
 		} else if (trans_t < trans_a + trans_b) {
 			video_rect(LAYER_FX, 0, VIEW_Y, SCREEN_W, VIEW_H, 255, 255, 255, 0);
 		} else {
@@ -824,16 +856,39 @@ static void draw_scene(void)
 }
 
 /* ---------------------------------------------------------------- interfaz */
-static void draw_box(void)
+/* with_text = 0: caja vacia (pausa con la ventana visible) */
+static void draw_box(int with_text)
 {
 	const Speaker *sp = vm.ev_speaker < speaker_count ? &speakers[vm.ev_speaker] : &speakers[0];
+	int k = box_level;
 
-	video_rect(LAYER_BOX, 0, BOX_Y, SCREEN_W, SCREEN_H - BOX_Y, 0, 0, 0, 1);
+	if (k >= BOX_FADE)
+		video_rect(LAYER_BOX, 0, BOX_Y, SCREEN_W, SCREEN_H - BOX_Y, 0, 0, 0, 1);
+	else       /* a medio fundido se resta un gris: en tonos medios coincide con oscurecer al 50% al llegar al final */
+		video_rect(LAYER_BOX, 0, BOX_Y, SCREEN_W, SCREEN_H - BOX_Y, 64 * k / BOX_FADE, 64 * k / BOX_FADE,
+		           64 * k / BOX_FADE, 3);
+	if (!with_text)
+		return;
 	if (sp->name[0])
-		font_draw(LAYER_TEXT, 8, BOX_Y + 2, sp->name, sp->r, sp->g, sp->b);
-	text_draw(&run, LAYER_TEXT, 8, BOX_Y + 15, 128, 128, 128);
-	if (text_page_done(&run) && ((video_frames() / 20) & 1))
+		font_draw(LAYER_TEXT, 8, BOX_Y + 2, sp->name, sp->r * k / BOX_FADE, sp->g * k / BOX_FADE,
+		          sp->b * k / BOX_FADE);
+	text_draw(&run, LAYER_TEXT, 8, BOX_Y + 15, 128 * k / BOX_FADE, 128 * k / BOX_FADE, 128 * k / BOX_FADE);
+	if (k >= BOX_FADE && text_page_done(&run) && ((video_frames() / 20) & 1))
 		video_triangle_down(LAYER_TEXT, 290, SCREEN_H - 24, 10, 7, 255, 255, 255);
+}
+
+/* Lleva la caja hacia visible u oculta, un paso por cuadro (al saltar, de golpe) */
+static void update_box(void)
+{
+	int target = show_box && (state == ST_SAY ||
+	             (win_on && (state == ST_RUN || state == ST_PAUSE || state == ST_TRANS)));
+
+	if (!show_box || skip_mode)
+		box_level = target ? BOX_FADE : 0;
+	else if (target && box_level < BOX_FADE)
+		box_level++;
+	else if (!target && box_level > 0)
+		box_level--;
 }
 
 static int option_lines(const char *s)
@@ -919,8 +974,12 @@ static void run_vm(void)
 	vm.now = (uint32_t)video_frames();
 	ev = vm_run(&vm);
 
-	if (ev == VM_EV_TRANSITION)
+	if (ev == VM_EV_TRANSITION) {
+		snap_box = box_level >= BOX_FADE;
 		begin_transition();          /* antes de cargar lo nuevo: guarda el cuadro anterior */
+		if (!win_on)
+			box_level = 0;           /* la caja que se oculta ya va en la copia y se desvanece con ella */
+	}
 	{
 		int changed = scene_dirty && !skip_mode;
 
@@ -977,6 +1036,9 @@ static void begin(int chapter, uint32_t offset, int var, int value)
 		vm.vars[var] = (int16_t)value;
 	skip_mode = 0;
 	play_frames = 0;
+	win_auto = 1;
+	win_on = 0;
+	box_level = 0;
 	if (vm_start(&vm, chapter, offset) != 0)
 		fatal("no se pudo iniciar el capitulo");
 	state = ST_RUN;
@@ -1181,6 +1243,9 @@ static void load_slot(int i)
 	clear_scene();
 	audio_stop_all();
 	skip_mode = 0;
+	win_auto = 1;
+	win_on = 0;
+	box_level = 0;
 	if (vm_start(&vm, rd16(s + 2), rd32(s + 4)) != 0)
 		fatal("no se pudo cargar la partida");
 	for (k = 0; k < VM_VARS; k++)
@@ -1836,6 +1901,8 @@ static void update_say(void)
 	int advance = (input_pressed(PAD_CROSS) && !eat_cross) ||
 	              (text_page_done(&run) && run.auto_next && text_finished(&run));
 
+	if (show_box && box_level < BOX_FADE)
+		return;                          /* como en Ren'Py, el texto empieza cuando la caja termino de aparecer */
 	if (advance) {
 		if (!text_page_done(&run)) {
 			text_reveal_page(&run);
@@ -2035,6 +2102,8 @@ int main(int argc, const char *argv[])
 		default:
 			break;
 		}
+		if (state <= ST_ERROR || state == ST_TRANS)
+			update_box();                /* en la pausa y los menus la caja queda como estaba */
 
 		transition_offset();
 		img_brightness = transition_brightness();
@@ -2047,8 +2116,14 @@ int main(int argc, const char *argv[])
 			draw_dev();
 			break;
 		case ST_SAY:
-			if (show_box)
-				draw_box();
+			if (box_level > 0)
+				draw_box(1);
+			break;
+		case ST_RUN:
+		case ST_PAUSE:
+		case ST_TRANS:
+			if (box_level > 0)
+				draw_box(0);
 			break;
 		case ST_MENU:
 			draw_menu();

@@ -140,11 +140,14 @@ void video_snapshot(int x, int y)
 	DrawSync(0);
 }
 
-/* Dibuja la copia como textura directa de 15 bits; blend como en video_rect */
-void video_snapshot_draw(int layer, int x, int y, int blend, int bright)
+static void snapshot_rows(int layer, int x, int y, int row0, int rows, int blend, int bright)
 {
 	int col;
 
+	if (rows <= 0)
+		return;
+	if (bright > 255)
+		bright = 255;
 	for (col = 0; col < SCREEN_W; col += 256) {
 		SPRT *s = (SPRT *)video_alloc(sizeof(SPRT));
 		int w = SCREEN_W - col < 256 ? SCREEN_W - col : 256;
@@ -152,14 +155,26 @@ void video_snapshot_draw(int layer, int x, int y, int blend, int bright)
 		if (!s)
 			return;
 		setSprt(s);
-		setXY0(s, col, VIEW_Y);
-		setWH(s, w, VIEW_H);
-		setUV0(s, 0, y & 255);
+		setXY0(s, col, VIEW_Y + row0);
+		setWH(s, w, rows);
+		setUV0(s, 0, (y + row0) & 255);
 		setRGB0(s, bright, bright, bright);
 		setSemiTrans(s, blend != 0);
 		video_add(layer, s);
 		video_set_tpage(layer, 2, blend ? blend - 1 : 0, x + col, y);
 	}
+}
+
+/* Dibuja la copia como textura directa de 15 bits; blend como en video_rect. Desde la fila de pantalla band_y se
+ * dibuja con band_bright (para deshacer la caja de texto que quedo en la copia); band_y >= VIEW_Y + VIEW_H: sin franja. */
+void video_snapshot_draw(int layer, int x, int y, int blend, int bright, int band_y, int band_bright)
+{
+	int split = band_y - VIEW_Y;
+
+	if (split > VIEW_H)
+		split = VIEW_H;
+	snapshot_rows(layer, x, y, 0, split, blend, bright);
+	snapshot_rows(layer, x, y, split, VIEW_H - split, blend, band_bright);
 }
 
 /* Origen vertical (en VRAM) del framebuffer donde se dibuja el cuadro actual */

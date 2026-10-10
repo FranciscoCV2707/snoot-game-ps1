@@ -48,7 +48,7 @@ Formato: `opcode u8` seguido de los argumentos. Tamaños en bytes entre parénte
 |---|---|---|---|
 | 0x01 | `SAY` | hablante u8, texto u16 (4) | `A "..."`, `"..."` (hablante 0 = narrador) |
 | 0x02 | `SAYX` | hablante u8, texto u16 (4) | `extend "..."` (continúa en la misma caja, sin borrar) |
-| 0x03 | `TEXTBOX` | modo u8 (2): 0 ocultar, 1 automático | `window hide`, `window auto`, `window show/hide Dissolve(x)` |
+| 0x03 | `TEXTBOX` | modo u8 (2): bits 0-1 = 0 ocultar, 1 automático, 2 mostrar; bit 2 = sin fundido (transición de un cuadro o menos) | `window hide`, `window auto`, `window show/hide Dissolve(x)` |
 
 ### Imágenes
 | Op | Nombre | Argumentos | Ren'Py |

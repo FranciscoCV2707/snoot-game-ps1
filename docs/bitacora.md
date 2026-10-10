@@ -6,6 +6,8 @@ Hecho:
 - Las lecturas de cada paso de la VM comparten una sola pausa de la musica.
 - Precarga de las imagenes de las escenas siguientes en un cache de RAM (320 KB) aprovechando esa pausa.
 - Disolver continuo con brillo de texturas en vez de pasos.
+- Caja de texto como `window auto` de Ren'Py: fundido de 0.2 s al aparecer y ocultarse, caja vacia en pausas, `window show/hide` respetados (antes se ignoraban). Verificado midiendo el oscurecimiento de la caja cuadro a cuadro en PCSX-Redux.
+- Plan de herramientas genericas Ren'Py -> PS1 en `docs/plan-renpy2psx.md` (para despues de la v0.1).
 
 ## 2026-10-09 - Fases 8 y 9, inicio de la 10
 Hecho:
