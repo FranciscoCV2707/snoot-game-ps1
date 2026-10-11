@@ -1259,8 +1259,12 @@ static const char *card_error(int result)
 	return 0;
 }
 
+static int card_disabled;       /* Select al arrancar: se juega sin memory card */
+
 static int write_card(const char *msg)
 {
+	if (card_disabled)
+		return card_state = SAVE_NO_CARD;
 	show_now(msg);
 	progress_to_buf();
 	card_state = save_write(save_buf);
@@ -2178,15 +2182,21 @@ int main(int argc, const char *argv[])
 		/* creditos mientras se lee la memory card */
 		int i;
 
+		/* la linea de abajo dice en que paso esta el arranque (para saber donde se detiene en una consola real);
+		 * con Select presionado no se lee la memory card */
+		int skip_card;
+
 		for (i = 0; i < 2; i++) {
 			draw_center(90, "Snoot Game", 255, 220, 40);
 			draw_center(108, "por Cavemanon", 128, 128, 128);
 			draw_center(140, "Versión para PlayStation hecha por fans", 96, 96, 96);
+			draw_center(200, "Leyendo memory card...", 64, 64, 64);
 			video_flip();
 		}
+		skip_card = card_disabled = input_raw_down(PAD_SELECT);
 		{
 			int t0 = VSync(-1);
-			card_state = save_read(save_buf);
+			card_state = skip_card ? SAVE_NO_CARD : save_read(save_buf);
 			if (card_state == SAVE_OK)
 				progress_from_buf();
 			else
@@ -2195,6 +2205,7 @@ int main(int argc, const char *argv[])
 				draw_center(90, "Snoot Game", 255, 220, 40);
 				draw_center(108, "por Cavemanon", 128, 128, 128);
 				draw_center(140, "Versión para PlayStation hecha por fans", 96, 96, 96);
+				draw_center(200, skip_card ? "Sin memory card (Select)" : "Cargando título...", 64, 64, 64);
 				video_flip();
 			}
 		}

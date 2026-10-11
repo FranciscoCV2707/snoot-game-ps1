@@ -25,6 +25,9 @@ Como jugar
 - Hace falta una BIOS de PlayStation en el emulador (la que pide DuckStation).
 - Para guardar se necesita una memory card en la ranura 1 (el emulador la crea sola). Usa 2 bloques.
 - En consola real: graba el .bin/.cue en un CD-R (consola con chip o con un metodo para cargar copias).
+  En PS2 con POPStarter (.VCD) es un emulador, no la consola real: puede fallar donde el CD-R funciona.
+- Si se queda en la pantalla de inicio en "Leyendo memory card...", manten Select presionado al
+  encender: se juega sin memory card (no se guarda).
 
 Controles
 ---------
@@ -34,6 +37,7 @@ Controles
   R1         saltar el texto ya leido (se detiene en lo nuevo y en las decisiones)
   Cuadrado   ocultar la caja de texto
   Cruceta    elegir en los menus y decisiones
+  Teclado (capitulo 13D): cruceta mover, X tecla, O borrar, L1 mayusculas, Start listo
 
 Como reportar un error
 ----------------------

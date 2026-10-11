@@ -29,7 +29,7 @@ Estado: Fase 8 casi completa (audio, transiciones, titulo, pausa, guardado, opci
 X avanza o completa el texto y confirma, O vuelve, Start abre la pausa (en una linea o una decision), d-pad elige, R1 salta lineas ya leidas (se detiene en lineas nuevas y menus), Cuadrado oculta la caja, Select muestra la depuracion. En el titulo, L1 + R1 + Select abre el menu de capitulos de desarrollo.
 
 ## Pantallas y guardado
-- Arranque: creditos mientras se lee la memory card; titulo (Comenzar, Continuar, Capitulos extra, Galeria, Opciones).
+- Arranque: creditos mientras se lee la memory card (abajo dice "Leyendo memory card..." y luego "Cargando título...", para saber donde se detiene en consola; con Select presionado no se usa la memory card en toda la sesion); titulo (Comenzar, Continuar, Capitulos extra, Galeria, Opciones).
 - Pausa: Seguir, Saltar texto leido, Guardar, Cargar, Opciones, Salir al titulo (con confirmacion).
 - `src/save.c`: 2 archivos de 1 bloque alternados (`BASLUS-99999SNOOTA`/`B`) con numero de guardado y checksum; titulo "SNOOT GAME" en Shift-JIS e icono `MCICON.BIN`.
 - Datos (main.c, seccion guardado): volumenes, finales, extras terminados, galeria vista, texto leido y 3 ranuras (capitulo, instruccion del SAY o MENU, variables, llamadas, escena, musica y ambientes, tiempo).

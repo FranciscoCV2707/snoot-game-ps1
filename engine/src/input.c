@@ -68,6 +68,14 @@ void input_update(void)
 	}
 }
 
+/* Estado del control sin pasar por input_update (antes del bucle principal; no arranca el guion de prueba) */
+int input_raw_down(uint16_t mask)
+{
+	PADTYPE *pad = (PADTYPE *)padbuff[0];
+
+	return pad->stat == 0 && (~pad->btn & mask) != 0;
+}
+
 int input_down(uint16_t mask)
 {
 	return (cur & mask) != 0;

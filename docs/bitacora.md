@@ -1,5 +1,10 @@
 # Bitácora
 
+## 2026-10-10 - Primera prueba en PS2 (POPStarter, .VCD): se queda en los creditos
+- Lo unico que pasa entre los creditos y el titulo es la lectura de la memory card con la BIOS (`open`/`read` en `bu00:`) y la carga del logo. Sospecha: la memory card bajo POPS.
+- Diagnostico en pantalla: "Leyendo memory card..." / "Cargando título..." debajo de los creditos. Select al encender juega sin memory card.
+- Pendiente: que el usuario diga en cual de los dos textos se queda, y probar el CD-R directo (modo PS1 de la PS2) en vez de POPStarter.
+
 ## 2026-10-10 - Congelones, insultos legibles y teclado (tras tu prueba)
 Hecho:
 - Medición: el motor anota los cuadros de mas de 0.1 s y el playtest los lista con la linea del guion. Historia completa al empezar: 316 congelones, el peor de 4.25 s y 156 s en total; casi todo eran lecturas del CD hechas en el momento (imagenes, y sobre todo efectos y ambientes: 3 MB solo en los capitulos 1 a 3).
