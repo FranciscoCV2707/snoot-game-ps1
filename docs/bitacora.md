@@ -5,6 +5,7 @@
 - Queda la opcion `--nocard` (disco sin memory card) y Select al arrancar.
 - `python -m tools.release 1.0` -> dist/SnootGamePS1-v1.0.zip. El LEEME dice que en POPStarter todavia no funciona.
 - Proyecto nuevo para el port nativo de PS2: C:\Dev\snoot-ps2.
+- POPStarter: el disco `--nocard` tampoco llega al titulo (negro con los rectangulos rojos). La memory card no era la unica causa; queda sin resolver. Siguiente prueba del usuario: PS1 real con CD-R.
 
 ## 2026-10-10 - Primera prueba en PS2 (POPStarter, .VCD): se queda en los creditos
 - Lo unico que pasa entre los creditos y el titulo es la lectura de la memory card con la BIOS (`open`/`read` en `bu00:`) y la carga del logo. Sospecha: la memory card bajo POPS.
