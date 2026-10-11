@@ -8,6 +8,7 @@
 - La plataforma del usuario es PS2 con FMCB + POPStarter desde USB (no puede arrancar CD-R).
 - USB: el POPStarter de 131,844 bytes (el de Crash) no arranca Snoot; el de 167,700 (`xx.snoot_games.ELF`) si. Con este llega a "Cargando título..." y la traza de pasos (T1-T9) se detiene en "T7 leyendo CD" (logo del titulo): la primera lectura del CD despues de leer la memory card con la BIOS no termina. Ahora la memory card se lee antes de `CdInit` (PSn00bSDK no permite llamarlo dos veces). Probado en PCSX-Redux: guardar y volver a leer funciona.
 - Riesgo pendiente: guardar dentro del juego tambien usa la BIOS despues de `CdInit`; puede colgar igual en POPS.
+- Con la memory card antes de `CdInit` ya no aparece ningun "T": se traba antes del titulo, en negro con los rectangulos rojos. Todo apunta a las funciones de memory card de la BIOS bajo POPS (sin `BIOS.BIN` POPS usa su BIOS propia). Prueba: `F:\POPS\snoot_games\BIOS.BIN` = SCPH1001 (MD5 924e392e...).
 - `cue2pops` del usuario: `C:\Users\Pako\Downloads\POPS-VCD-Manager\POPS-VCD-Manager\Common\cue2pops.exe`.
 - Pendiente: que el usuario diga en cual de los dos textos se queda, y probar el CD-R directo (modo PS1 de la PS2) en vez de POPStarter.
 
