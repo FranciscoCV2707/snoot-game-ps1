@@ -4,6 +4,8 @@
 - Lo unico que pasa entre los creditos y el titulo es la lectura de la memory card con la BIOS (`open`/`read` en `bu00:`) y la carga del logo. Sospecha: la memory card bajo POPS.
 - Diagnostico en pantalla: "Leyendo memory card..." / "Cargando título..." debajo de los creditos. Select al encender juega sin memory card.
 - Fotos de la tele: el tercer renglon de los creditos queda tapado por basura (bloque rojo, recuadro azul con "PlayStation"), que parecen restos de la BIOS en VRAM. Ahora se limpia toda la VRAM al iniciar y el indicador va arriba (y = 56). En PCSX-Redux con arranque completo (`emutest --full-boot`) llega al titulo.
+- La limpieza de VRAM con `DrawPrim` + `DrawSync` justo despues de `ResetGraph` dejo la PS2 en negro (ni barras de arranque): se quito. En POPS no usar `DrawPrim` directo; lo que pasa por `DrawOTag` si funciona.
+- La plataforma del usuario es PS2 con FMCB + POPStarter desde USB (no puede arrancar CD-R).
 - Pendiente: que el usuario diga en cual de los dos textos se queda, y probar el CD-R directo (modo PS1 de la PS2) en vez de POPStarter.
 
 ## 2026-10-10 - Congelones, insultos legibles y teclado (tras tu prueba)
