@@ -2173,7 +2173,7 @@ int main(int argc, const char *argv[])
 		for (i = 0; i < 2; i++) {
 			draw_center(90, "Snoot Game", 255, 220, 40);
 			draw_center(108, "por Cavemanon", 128, 128, 128);
-			draw_center(140, "Versión para PlayStation hecha por fans", 96, 96, 96);
+			draw_center(140, "Port de PS1 hecho por Pako Tako", 96, 96, 96);
 			video_flip();
 		}
 		if (input_raw_down(PAD_SELECT))
@@ -2188,7 +2188,7 @@ int main(int argc, const char *argv[])
 			while (VSync(-1) - t0 < 150) {
 				draw_center(90, "Snoot Game", 255, 220, 40);
 				draw_center(108, "por Cavemanon", 128, 128, 128);
-				draw_center(140, "Versión para PlayStation hecha por fans", 96, 96, 96);
+				draw_center(140, "Port de PS1 hecho por Pako Tako", 96, 96, 96);
 				video_flip();
 			}
 		}
