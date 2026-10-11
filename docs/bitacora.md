@@ -1,5 +1,11 @@
 # Bitácora
 
+## 2026-10-10 - Version 1.0
+- Se quitaron las barras verdes de arranque, los indicadores ("Leyendo memory card...") y la traza T1-T9: solo quedan los creditos. Si falta la fuente se ve un bloque rojo.
+- Queda la opcion `--nocard` (disco sin memory card) y Select al arrancar.
+- `python -m tools.release 1.0` -> dist/SnootGamePS1-v1.0.zip. El LEEME dice que en POPStarter todavia no funciona.
+- Proyecto nuevo para el port nativo de PS2: C:\Dev\snoot-ps2.
+
 ## 2026-10-10 - Primera prueba en PS2 (POPStarter, .VCD): se queda en los creditos
 - Lo unico que pasa entre los creditos y el titulo es la lectura de la memory card con la BIOS (`open`/`read` en `bu00:`) y la carga del logo. Sospecha: la memory card bajo POPS.
 - Diagnostico en pantalla: "Leyendo memory card..." / "Cargando título..." debajo de los creditos. Select al encender juega sin memory card.

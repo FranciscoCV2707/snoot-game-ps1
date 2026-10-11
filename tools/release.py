@@ -13,11 +13,11 @@ ROOT = Path(__file__).resolve().parents[1]
 DISC = ROOT / "build" / "engine"
 DIST = ROOT / "dist"
 
-README = """Snoot Game para PlayStation - version {version} (prueba)
-=========================================================
+README = """Snoot Game para PlayStation - version {version}
+==========================================
 
-Port hecho por fans de Snoot Game (Cavemanon) a la PlayStation original. Esta es una version de prueba: puede tener
-errores. Si encuentras alguno, avisanos (ver abajo).
+Port hecho por fans de Snoot Game (Cavemanon) a la PlayStation original. Si encuentras algun error, avisanos
+(ver abajo).
 
 Como jugar
 ----------
@@ -25,9 +25,9 @@ Como jugar
 - Hace falta una BIOS de PlayStation en el emulador (la que pide DuckStation).
 - Para guardar se necesita una memory card en la ranura 1 (el emulador la crea sola). Usa 2 bloques.
 - En consola real: graba el .bin/.cue en un CD-R (consola con chip o con un metodo para cargar copias).
-  En PS2 con POPStarter (.VCD) es un emulador, no la consola real: puede fallar donde el CD-R funciona.
-- Si se queda en la pantalla de inicio en "Leyendo memory card...", manten Select presionado al
-  encender: se juega sin memory card (no se guarda).
+- PS2 con POPStarter (.VCD): todavia no funciona (se queda en la pantalla de inicio). Usa un emulador o
+  una consola que lea el CD-R.
+- Con Select presionado durante la pantalla de inicio no se usa la memory card (no se guarda).
 
 Controles
 ---------

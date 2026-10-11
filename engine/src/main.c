@@ -111,41 +111,15 @@ static int autosave_pending;
 static int menu_cursor, menu_top, menu_order[VM_MENU_MAX];
 static uint32_t rng_state = 12345;
 
-/* Diagnostico de arranque sin fuente: una barra verde por etapa superada y una roja si fallo */
-static int boot_stage;
-
-static void boot_screen(int failed)
-{
-	int i, n;
-
-	for (i = 0; i < 2; i++) {
-		for (n = 0; n < boot_stage; n++)
-			video_rect(LAYER_TEXT, 20 + n * 24, 100, 20, 40, 0, 200, 0, 0);
-		if (failed)
-			video_rect(LAYER_TEXT, 20 + boot_stage * 24, 100, 20, 40, 220, 0, 0, 0);
-		video_flip();
-	}
-}
-
-/* Diagnostico para POPS (PS2): en los primeros cuadros del titulo cada paso se muestra en pantalla antes de hacerse,
- * asi la foto de donde se detiene dice el paso. Cambia de cuadro en cada llamada. */
-static int boot_tracing = 1, boot_trace_frames;
-static void draw_center(int y, const char *s, int r, int g, int b);
-
-static void boot_trace(const char *msg)
-{
-	if (!boot_tracing)
-		return;
-	draw_center(90, "Snoot Game", 255, 220, 40);
-	draw_center(108, "por Cavemanon", 128, 128, 128);
-	draw_center(56, msg, 255, 255, 255);
-	video_flip();
-}
-
 static void fatal(const char *msg)
 {
+	int i;
+
 	printf("ERROR: %s\n", msg);
-	boot_screen(1);
+	for (i = 0; i < 2; i++) {               /* sin fuente: un bloque rojo indica el error */
+		video_rect(LAYER_TEXT, 140, 100, 40, 40, 220, 0, 0, 0);
+		video_flip();
+	}
 	for (;;)
 		VSync(0);
 }
@@ -2172,19 +2146,13 @@ int main(int argc, const char *argv[])
 		card_disabled = cd_find("\\DATA\\NOCARD.BIN", &lba, &size) == 0;
 	}
 	input_init(!card_disabled);
-	boot_stage = 1;
-	boot_screen(0);
 	{
 		int size = cd_read_file("\\DATA\\FONT.BIN", chapter_buf, CHAPTER_BYTES);
 
 		if (size < 0 || font_load(chapter_buf, size) != 0)
 			fatal("FONT.BIN");
 	}
-	boot_stage = 2;
-	boot_screen(0);
 	load_game_tables();
-	boot_stage = 3;
-	boot_screen(0);
 	scene_set_positions(pos_x, pos_y, pos_count);
 	vm_init(&vm, &host);
 	if (cd_read_file("\\DATA\\MCICON.BIN", file_buf, sizeof(file_buf)) >= 160)
@@ -2198,7 +2166,6 @@ int main(int argc, const char *argv[])
 		    cd_read_file("\\DATA\\AUTOTEST.BIN", autotest, sizeof(autotest)) > 2)
 			input_set_script(autotest + 2, autotest[0] | (autotest[1] << 8));
 	}
-	boot_stage = 4;
 	{
 		/* creditos mientras se lee la memory card; con Select presionado no se lee */
 		int i;
@@ -2207,7 +2174,6 @@ int main(int argc, const char *argv[])
 			draw_center(90, "Snoot Game", 255, 220, 40);
 			draw_center(108, "por Cavemanon", 128, 128, 128);
 			draw_center(140, "Versión para PlayStation hecha por fans", 96, 96, 96);
-			draw_center(56, card_disabled ? "Sin memory card" : "Leyendo memory card...", 200, 200, 200);
 			video_flip();
 		}
 		if (input_raw_down(PAD_SELECT))
@@ -2223,23 +2189,18 @@ int main(int argc, const char *argv[])
 				draw_center(90, "Snoot Game", 255, 220, 40);
 				draw_center(108, "por Cavemanon", 128, 128, 128);
 				draw_center(140, "Versión para PlayStation hecha por fans", 96, 96, 96);
-				draw_center(56, card_disabled ? "Sin memory card" : "Cargando título...", 200, 200, 200);
 				video_flip();
 			}
 		}
 	}
 	go_title();
 	vb_start = last_vb = VSync(-1);
-	res_trace = boot_trace;
 
 	for (;;) {
 		int vb, in_game;
 
-		boot_trace("T1 control");
 		input_update();
-		boot_trace("T2 audio");
 		audio_update();
-		boot_trace("T3 logica");
 		if (autotest_autoplay)
 			autoplay_step();
 		in_game = state <= ST_ERROR || state == ST_TRANS || state == ST_SCROLL || state == ST_CREDITS;
@@ -2341,9 +2302,7 @@ int main(int argc, const char *argv[])
 		}
 		if (state <= ST_ERROR || state == ST_TRANS)
 			update_box();                /* en la pausa y los menus la caja queda como estaba */
-		boot_trace("T4 cargas");
 		res_tick();
-		boot_trace("T5 dibujo");
 
 		transition_offset();
 		img_brightness = transition_brightness();
@@ -2427,11 +2386,7 @@ int main(int argc, const char *argv[])
 			draw_debug(fps);
 		if (skip_mode)
 			font_draw(LAYER_DEBUG, SCREEN_W - 84, 12, ">> Saltando", 255, 220, 40);
-		boot_trace("T9 cuadro");
 		video_flip();
-		if (boot_tracing && ++boot_trace_frames >= 3)
-			boot_tracing = 0;
-		res_trace = boot_tracing ? boot_trace : 0;
 	}
 	return 0;
 }

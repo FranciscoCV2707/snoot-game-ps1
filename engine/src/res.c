@@ -144,7 +144,6 @@ static int take_clut(void)
 }
 
 static const Image *load_image(int image_id, int for_draw);
-void (*res_trace)(const char *msg);
 
 /* ---------------------------------------------------------------- cache de archivos en RAM (D7)
  * Cuando ya hay que pausar la musica para leer, se aprovecha la pausa para traer tambien las imagenes de las escenas
@@ -575,13 +574,9 @@ static const Image *load_image(int image_id, int for_draw)
 		}
 	sprintf(path, "\\DATA\\I%04d.IMG", image_id);
 
-	if (res_trace)
-		res_trace("T6 precarga");
 	prefetch_wait(image_id);                      /* si se esta precargando, se espera a que llegue */
 	data = cache_lookup(image_id, &size);         /* ya leida de antemano: sin tocar el CD */
 	if (!data) {
-		if (res_trace)
-			res_trace("T7 leyendo CD");
 		size = cd_read_file(path, file_buf, FILE_BYTES);
 		data = file_buf;
 		res_sync_log[res_cd_reads & 15] = (uint32_t)image_id | res_trace_tag;
@@ -654,8 +649,6 @@ static const Image *load_image(int image_id, int for_draw)
 			memset(&grid[region][i][gx], (int)(e - entries) + 1, gw);
 	}
 	e->used = 1;
-	if (res_trace)
-		res_trace("T8 subiendo a VRAM");
 	if ((big ? img_load_big : img_load)(&e->img, data, size, region_x[region] + gx * CELL_WORDS, gy * CELL_ROWS,
 	                                    CLUT_BG_Y + (e->clut_bit >= 0 ? e->clut_bit : 0)) != 0) {
 		free_entry(e);

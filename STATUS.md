@@ -91,7 +91,8 @@ Ultima actualizacion: 2026-10-10
 - [x] VRAM: videollamada y grano de la ruta 3 completos (antes 34 cuadros sin cargar) y fondo del pasillo del capitulo 10 que se perdia tras una transicion; playtest con 0 imagenes sin cargar en las 15 corridas
 - [x] Tu segunda prueba: insultos del concierto legibles y dentro de la pantalla; teclado en pantalla en 13D (`renpy.input`)
 - [x] Congelones: precarga en segundo plano (imagenes, ambientes y efectos), revision de lo que viene en cada linea y motor en Release (-O2). Historia completa: de 316 congelones (peor 4.25 s, 156 s en total) a 131 (peor 1.05 s, 37 s); los que quedan son casi todos al empezar un capitulo
-- [ ] PS2 con POPStarter (.VCD): se queda en los creditos. Agregado indicador del paso de arranque y Select para jugar sin memory card; falta que digas que texto aparece y probar el CD-R grabado
+- [x] Version 1.0: sin barras ni indicadores de arranque, solo los creditos (dist/SnootGamePS1-v1.0.zip)
+- [ ] PS2 con POPStarter (.VCD): se traba al usar el controlador de memory card de la BIOS. Falta el resultado de `xx.snoot_nocard.ELF` (disco con `build_game.py --nocard`); si funciona, reescribir el guardado sin la BIOS
 - Conocido: en las escenas con 9 personajes (Trigga III, Naomi I) 9 transiciones se hacen como corte por falta de VRAM
 - Conocido: Fang en el acuario de 12D, videollamada de 13C y dimmer del 40% (se usa 50%) no son identicos a Ren'Py
 - Nota: RAM usada ~1.6 MB de 2 MB

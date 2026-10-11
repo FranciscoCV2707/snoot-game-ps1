@@ -26,7 +26,5 @@ void res_prefetch(const uint16_t *ids, int n);
 int res_prefetch_busy(void);
 /* 1 si la imagen esta en VRAM o el archivo en la cache de RAM (no hace falta leer el CD) */
 int res_have(int id);
-/* Diagnostico de arranque: si no es nulo, se llama antes de cada paso de una carga de imagen */
-extern void (*res_trace)(const char *msg);
 /* Archivo ya traido por la precarga (si se esta leyendo, lo espera); 0 si no esta */
 const uint8_t *res_cached_file(int id, int *size);
