@@ -2163,9 +2163,14 @@ int main(int argc, const char *argv[])
 	int vb_start, last_vb, frames_window = 0, fps = 0;
 
 	video_init();
+	input_init();
+	boot_screen(0);                      /* da tiempo al control de reportar Select */
+	/* la memory card se lee antes de iniciar el CD: en la PS2 (POPStarter) leerla despues dejaba colgada la
+	 * siguiente lectura del CD. Con Select presionado no se usa la memory card. */
+	card_disabled = input_raw_down(PAD_SELECT);
+	card_state = card_disabled ? SAVE_NO_CARD : save_read(save_buf);
 	cd_init();
 	audio_init();
-	input_init();
 	boot_stage = 1;
 	boot_screen(0);
 	{
@@ -2194,24 +2199,17 @@ int main(int argc, const char *argv[])
 	}
 	boot_stage = 4;
 	{
-		/* creditos mientras se lee la memory card */
+		/* creditos (la memory card ya se leyo antes de iniciar el CD) */
 		int i;
-
-		/* la linea de abajo dice en que paso esta el arranque (para saber donde se detiene en una consola real);
-		 * con Select presionado no se lee la memory card */
-		int skip_card;
 
 		for (i = 0; i < 2; i++) {
 			draw_center(90, "Snoot Game", 255, 220, 40);
 			draw_center(108, "por Cavemanon", 128, 128, 128);
 			draw_center(140, "Versión para PlayStation hecha por fans", 96, 96, 96);
-			draw_center(56, "Leyendo memory card...", 200, 200, 200);
 			video_flip();
 		}
-		skip_card = card_disabled = input_raw_down(PAD_SELECT);
 		{
 			int t0 = VSync(-1);
-			card_state = skip_card ? SAVE_NO_CARD : save_read(save_buf);
 			if (card_state == SAVE_OK)
 				progress_from_buf();
 			else
@@ -2220,7 +2218,7 @@ int main(int argc, const char *argv[])
 				draw_center(90, "Snoot Game", 255, 220, 40);
 				draw_center(108, "por Cavemanon", 128, 128, 128);
 				draw_center(140, "Versión para PlayStation hecha por fans", 96, 96, 96);
-				draw_center(56, skip_card ? "Sin memory card (Select)" : "Cargando título...", 200, 200, 200);
+				draw_center(56, card_disabled ? "Sin memory card (Select)" : "Cargando título...", 200, 200, 200);
 				video_flip();
 			}
 		}
