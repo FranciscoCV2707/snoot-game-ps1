@@ -52,7 +52,21 @@ Notas
 - La musica es mono y las imagenes estan reducidas a la resolucion de la PlayStation (320x240).
 - Las animaciones y transiciones se aproximan con lo que puede hacer la consola.
 - Snoot Game es de Cavemanon. Este port es gratuito y no tiene relacion oficial con ellos.
+
+Licencias
+---------
+- Snoot Game (Cavemanon): codigo bajo GNU AGPLv3; textos, imagenes, musica y demas material en pantalla
+  bajo CC-BY-SA 4.0. Original: https://git.cavemanon.xyz/Cavemanon/SnootGame
+- El material de terceros con atribucion obligatoria (por ejemplo, sonidos de Freesound.org) esta listado
+  en LICENCIAS/LICENSE.txt.
+- Este disco contiene ese material convertido para la PlayStation y se reparte bajo las mismas licencias.
+  Textos completos en la carpeta LICENCIAS.
+- Port de PS1 hecho por Pako Tako. Codigo fuente del port: https://github.com/FranciscoCV2707/snoot-game-ps1
 """
+
+ORIGINAL = ROOT / "original"
+LICENSES = [("LICENSE", "LICENSE.txt"), ("CC-BY-SA-4.0.txt", "CC-BY-SA-4.0.txt"),
+            ("GNU Affero General Public License Version Three.txt", "AGPL-3.0.txt")]
 
 
 def main():
@@ -67,10 +81,14 @@ def main():
     shutil.copy2(DISC / "snoot_game.bin", out / "snoot_game.bin")
     shutil.copy2(DISC / "snoot_game.cue", out / "snoot_game.cue")
     (out / "LEEME.txt").write_text(README.format(version=args.version), encoding="utf-8")
+    (out / "LICENCIAS").mkdir(exist_ok=True)
+    for src, dst in LICENSES:
+        shutil.copy2(ORIGINAL / src, out / "LICENCIAS" / dst)
     archive = DIST / f"{name}.zip"
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
-        for f in sorted(out.iterdir()):
-            z.write(f, f"{name}/{f.name}")
+        for f in sorted(out.rglob("*")):
+            if f.is_file():
+                z.write(f, f"{name}/{f.relative_to(out).as_posix()}")
     print("listo:", archive, f"({archive.stat().st_size / 1e6:.0f} MB)")
     return 0
 
