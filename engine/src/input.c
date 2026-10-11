@@ -16,14 +16,18 @@ volatile uint32_t autotest_shot, autotest_quit, autotest_autoplay;
 static uint8_t script_done[2800];
 static int script_base = -1;
 
-void input_init(void)
+void input_init(int with_card)
 {
-	/* control y memory card comparten el puerto: se inician juntos (la memory card la usa save.c) */
+	/* control y memory card comparten el puerto: se inician juntos (la memory card la usa save.c). Sin memory card
+	 * no se instala su controlador de la BIOS (en POPStarter dejaba colgado el CD). */
 	InitPAD(padbuff[0], 34, padbuff[1], 34);
-	InitCARD(1);
+	if (with_card)
+		InitCARD(1);
 	StartPAD();
-	StartCARD();
-	_bu_init();
+	if (with_card) {
+		StartCARD();
+		_bu_init();
+	}
 	ChangeClearPAD(0);
 	cur = prev = 0;
 }

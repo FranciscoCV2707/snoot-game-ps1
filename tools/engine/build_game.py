@@ -257,6 +257,7 @@ def main():
     ap.add_argument("--chapters", default="all", help="indices separados por coma, o all")
     ap.add_argument("--start", default="story", help="story (la historia completa, capitulo tras capitulo) o una etiqueta")
     ap.add_argument("--autotest", type=Path, help="AUTOTEST.BIN de una prueba automatica (tools/engine/emutest.py)")
+    ap.add_argument("--nocard", action="store_true", help="disco que no usa la memory card (prueba en PS2/POPStarter)")
     args = ap.parse_args()
 
     program = Program(DATA)
@@ -285,6 +286,8 @@ def main():
     sources += [(f.name, f.read_bytes()) for f in sorted((DATA / "SFX").glob("S*.SPU"))]
     if args.autotest:
         sources.append(("AUTOTEST.BIN", args.autotest.read_bytes()))
+    if args.nocard:
+        sources.append(("NOCARD.BIN", bytes(4)))
     images = set()
     for idx in chapters:
         fname = "STORY.VNB" if program.chapters[idx].name == "STORY" else f"C{idx:02d}.VNB"

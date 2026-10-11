@@ -2163,14 +2163,15 @@ int main(int argc, const char *argv[])
 	int vb_start, last_vb, frames_window = 0, fps = 0;
 
 	video_init();
-	input_init();
-	boot_screen(0);                      /* da tiempo al control de reportar Select */
-	/* la memory card se lee antes de iniciar el CD: en la PS2 (POPStarter) leerla despues dejaba colgada la
-	 * siguiente lectura del CD. Con Select presionado no se usa la memory card. */
-	card_disabled = input_raw_down(PAD_SELECT);
-	card_state = card_disabled ? SAVE_NO_CARD : save_read(save_buf);
 	cd_init();
 	audio_init();
+	{
+		/* disco sin memory card (build_game.py --nocard): no se instala su controlador (prueba en POPStarter) */
+		int lba, size;
+
+		card_disabled = cd_find("\\DATA\\NOCARD.BIN", &lba, &size) == 0;
+	}
+	input_init(!card_disabled);
 	boot_stage = 1;
 	boot_screen(0);
 	{
@@ -2199,15 +2200,19 @@ int main(int argc, const char *argv[])
 	}
 	boot_stage = 4;
 	{
-		/* creditos (la memory card ya se leyo antes de iniciar el CD) */
+		/* creditos mientras se lee la memory card; con Select presionado no se lee */
 		int i;
 
 		for (i = 0; i < 2; i++) {
 			draw_center(90, "Snoot Game", 255, 220, 40);
 			draw_center(108, "por Cavemanon", 128, 128, 128);
 			draw_center(140, "Versión para PlayStation hecha por fans", 96, 96, 96);
+			draw_center(56, card_disabled ? "Sin memory card" : "Leyendo memory card...", 200, 200, 200);
 			video_flip();
 		}
+		if (input_raw_down(PAD_SELECT))
+			card_disabled = 1;
+		card_state = card_disabled ? SAVE_NO_CARD : save_read(save_buf);
 		{
 			int t0 = VSync(-1);
 			if (card_state == SAVE_OK)
@@ -2218,7 +2223,7 @@ int main(int argc, const char *argv[])
 				draw_center(90, "Snoot Game", 255, 220, 40);
 				draw_center(108, "por Cavemanon", 128, 128, 128);
 				draw_center(140, "Versión para PlayStation hecha por fans", 96, 96, 96);
-				draw_center(56, card_disabled ? "Sin memory card (Select)" : "Cargando título...", 200, 200, 200);
+				draw_center(56, card_disabled ? "Sin memory card" : "Cargando título...", 200, 200, 200);
 				video_flip();
 			}
 		}

@@ -164,7 +164,7 @@ def parse_triggers(text):
     return ", ".join(out)
 
 
-def run(steps, out, keep_card=False, timeout=900, max_frames=None, triggers=None, full_boot=False):
+def run(steps, out, keep_card=False, timeout=900, max_frames=None, triggers=None, full_boot=False, nocard=False):
     out = out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     for old in list(out.glob("*.png")) + list(out.glob("*.raw")) + [out / "shots.txt", out / "final.txt"]:
@@ -172,7 +172,8 @@ def run(steps, out, keep_card=False, timeout=900, max_frames=None, triggers=None
     if not keep_card:
         (out / "card1.mcd").unlink(missing_ok=True)
     (out / "AUTOTEST.BIN").write_bytes(autotest_bin(steps))
-    subprocess.run([sys.executable, "-m", "tools.engine.build_game", "--autotest", str(out / "AUTOTEST.BIN")], cwd=ROOT,
+    subprocess.run([sys.executable, "-m", "tools.engine.build_game", "--autotest", str(out / "AUTOTEST.BIN"),
+                    *(["--nocard"] if nocard else [])], cwd=ROOT,
                    check=True, capture_output=True)
     sym = symbols()
     names = ", ".join(f"'{arg}'" for _, action, arg in steps if action == "shot")
@@ -223,10 +224,11 @@ def main():
     ap.add_argument("--keep-card", action="store_true")
     ap.add_argument("--timeout", type=int, default=900)
     ap.add_argument("--max-frames", type=int, help="cierra el emulador despues de estos cuadros (por defecto el ultimo paso + 3000)")
+    ap.add_argument("--nocard", action="store_true", help="disco sin memory card (build_game.py --nocard)")
     ap.add_argument("--full-boot", action="store_true", help="arranque completo de la BIOS (como una consola), sin -fastboot")
     ap.add_argument("--triggers", help='capturas por estado o posicion: "state=18:teclado:30; pc=0,1850:insultos:40"')
     args = ap.parse_args()
-    shots = run(parse_steps(args.steps), args.out, args.keep_card, args.timeout, args.max_frames, args.triggers, args.full_boot)
+    shots = run(parse_steps(args.steps), args.out, args.keep_card, args.timeout, args.max_frames, args.triggers, args.full_boot, args.nocard)
     final = args.out.resolve() / "final.txt"
     if final.exists():
         print(final.read_text(encoding="utf-8"))
