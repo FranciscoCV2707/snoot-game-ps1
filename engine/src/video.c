@@ -31,6 +31,18 @@ void video_init(void)
 
 	ResetGraph(0);
 
+	/* la BIOS deja sus texturas en VRAM (logo de PlayStation); en la PS2 (POPS) se veian en pantalla */
+	for (i = 0; i < 8; i++) {
+		FILL f;
+
+		setFill(&f);
+		setXY0(&f, (i & 3) * 256, (i >> 2) * 256);
+		setWH(&f, 256, 256);
+		setRGB0(&f, 0, 0, 0);
+		DrawPrim(&f);
+		DrawSync(0);
+	}
+
 	/* Dos framebuffers de 320x240: el que se muestra y el que se dibuja se alternan */
 	SetDefDispEnv(&disp[0], 0, 0, SCREEN_W, SCREEN_H);
 	SetDefDispEnv(&disp[1], 0, SCREEN_H, SCREEN_W, SCREEN_H);

@@ -2190,7 +2190,7 @@ int main(int argc, const char *argv[])
 			draw_center(90, "Snoot Game", 255, 220, 40);
 			draw_center(108, "por Cavemanon", 128, 128, 128);
 			draw_center(140, "Versión para PlayStation hecha por fans", 96, 96, 96);
-			draw_center(200, "Leyendo memory card...", 64, 64, 64);
+			draw_center(56, "Leyendo memory card...", 200, 200, 200);
 			video_flip();
 		}
 		skip_card = card_disabled = input_raw_down(PAD_SELECT);
@@ -2205,7 +2205,7 @@ int main(int argc, const char *argv[])
 				draw_center(90, "Snoot Game", 255, 220, 40);
 				draw_center(108, "por Cavemanon", 128, 128, 128);
 				draw_center(140, "Versión para PlayStation hecha por fans", 96, 96, 96);
-				draw_center(200, skip_card ? "Sin memory card (Select)" : "Cargando título...", 64, 64, 64);
+				draw_center(56, skip_card ? "Sin memory card (Select)" : "Cargando título...", 200, 200, 200);
 				video_flip();
 			}
 		}

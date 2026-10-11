@@ -164,7 +164,7 @@ def parse_triggers(text):
     return ", ".join(out)
 
 
-def run(steps, out, keep_card=False, timeout=900, max_frames=None, triggers=None):
+def run(steps, out, keep_card=False, timeout=900, max_frames=None, triggers=None, full_boot=False):
     out = out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     for old in list(out.glob("*.png")) + list(out.glob("*.raw")) + [out / "shots.txt", out / "final.txt"]:
@@ -186,7 +186,7 @@ def run(steps, out, keep_card=False, timeout=900, max_frames=None, triggers=None
                              "synclog": sym.get("res_sync_log", "nil"),
                              "triggers": parse_triggers(triggers),
                              "max_frames": max_frames or last + 3000}, encoding="utf-8")
-    args = [str(REDUX), "-no-ui", "-run", "-fastboot", "-bios", str(BIOS), "-iso", str(CUE),
+    args = [str(REDUX), "-no-ui", "-run", *([] if full_boot else ["-fastboot"]), "-bios", str(BIOS), "-iso", str(CUE),
             "-memcard1", str(out / "card1.mcd"), "-exec", f"dofile('{script.as_posix()}')"]
     try:
         subprocess.run(args, capture_output=True, timeout=timeout)
@@ -223,9 +223,10 @@ def main():
     ap.add_argument("--keep-card", action="store_true")
     ap.add_argument("--timeout", type=int, default=900)
     ap.add_argument("--max-frames", type=int, help="cierra el emulador despues de estos cuadros (por defecto el ultimo paso + 3000)")
+    ap.add_argument("--full-boot", action="store_true", help="arranque completo de la BIOS (como una consola), sin -fastboot")
     ap.add_argument("--triggers", help='capturas por estado o posicion: "state=18:teclado:30; pc=0,1850:insultos:40"')
     args = ap.parse_args()
-    shots = run(parse_steps(args.steps), args.out, args.keep_card, args.timeout, args.max_frames, args.triggers)
+    shots = run(parse_steps(args.steps), args.out, args.keep_card, args.timeout, args.max_frames, args.triggers, args.full_boot)
     final = args.out.resolve() / "final.txt"
     if final.exists():
         print(final.read_text(encoding="utf-8"))
