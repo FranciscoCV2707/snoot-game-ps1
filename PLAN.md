@@ -214,7 +214,7 @@ engine/ ──────────────► CMake + PSn00bSDK ──�
 
 Son pocas, pero evitan los errores más comunes (y conviene que Claude Code las siga siempre; por eso también están en el `CLAUDE.md`):
 
-1. **Ruta del proyecto corta, sin espacios ni acentos:** `C:\dev\snoot-ps1`. Nada de `C:\Users\José\Mis Documentos\...` ni carpetas sincronizadas con OneDrive (OneDrive bloquea archivos a mitad del build).
+1. **Ruta del proyecto corta, sin espacios ni acentos:** `E:\dev\snoot-ps1`. Nada de `C:\Users\José\Mis Documentos\...` ni carpetas sincronizadas con OneDrive (OneDrive bloquea archivos a mitad del build).
 2. **Codificación UTF-8 siempre.** En Windows, Python abre los archivos con la codificación vieja (cp1252) si no se le indica otra cosa, y los `.rpy` (con acentos, ñ, comillas tipográficas) se rompen. Reglas:
    - Todo `open()` lleva `encoding="utf-8"` (o usar `Path.read_text(encoding="utf-8")`).
    - Además, activar el modo UTF-8 de Python a nivel sistema: variable de entorno `PYTHONUTF8=1`.
@@ -235,7 +235,7 @@ Son pocas, pero evitan los errores más comunes (y conviene que Claude Code las 
    *.VAG  binary
    *.ps1  text eol=crlf
    ```
-5. **Antivirus:** agregar `C:\dev\snoot-ps1` y la carpeta de PSn00bSDK como **exclusión de Windows Defender**. Si no, cada compilación y cada conversión de cientos de imágenes se vuelve mucho más lenta, y a veces Defender bloquea el `.exe` recién generado.
+5. **Antivirus:** agregar `E:\dev\snoot-ps1` y la carpeta de PSn00bSDK como **exclusión de Windows Defender**. Si no, cada compilación y cada conversión de cientos de imágenes se vuelve mucho más lenta, y a veces Defender bloquea el `.exe` recién generado.
 6. **Rutas largas:** activar el soporte de rutas largas de Windows (`LongPathsEnabled`) y en git `git config --global core.longpaths true`.
 7. **Scripts del proyecto en Python, no en `.sh` ni `.bat`:** `build.py`, `tools/check_env.py`. Funcionan igual en cualquier sistema.
 
@@ -283,12 +283,12 @@ Primero proponme un plan corto; no escribas código hasta que lo apruebe.
 
 ### Tareas
 1. **Preparar Windows** (una sola vez):
-   - Crear la carpeta `C:\dev\` (ver reglas de la sección 4.4).
+   - Crear la carpeta `E:\dev\` (ver reglas de la sección 4.4).
    - Activar rutas largas: en PowerShell **como administrador**:
      ```powershell
      New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force
      ```
-   - Agregar `C:\dev` como exclusión en *Seguridad de Windows → Protección contra virus y amenazas → Exclusiones*.
+   - Agregar `E:\dev` como exclusión en *Seguridad de Windows → Protección contra virus y amenazas → Exclusiones*.
    - Activar el modo UTF-8 de Python para tu usuario:
      ```powershell
      setx PYTHONUTF8 1
@@ -313,10 +313,10 @@ Primero proponme un plan corto; no escribas código hasta que lo apruebe.
    irm https://claude.ai/install.ps1 | iex
    ```
    Verificar con `claude --version` y `claude doctor`. Con Git for Windows instalado (paso 2), Claude Code usa Git Bash para ejecutar comandos; sin él usaría PowerShell. Requiere una cuenta Pro, Max, Team, Enterprise o de Console.
-4. Crear el repositorio `C:\dev\snoot-ps1\` con la estructura de la sección 4.1, `git init`, el `CLAUDE.md` del Apéndice A, el `.gitattributes` de la sección 4.4 y un `.gitignore` (que incluya `build/`, `.venv/`, `original/` si no se quiere versionar el juego).
+4. Crear el repositorio `E:\dev\snoot-ps1\` con la estructura de la sección 4.1, `git init`, el `CLAUDE.md` del Apéndice A, el `.gitattributes` de la sección 4.4 y un `.gitignore` (que incluya `build/`, `.venv/`, `original/` si no se quiere versionar el juego).
 5. **Entorno virtual de Python:**
    ```powershell
-   cd C:\dev\snoot-ps1
+   cd E:\dev\snoot-ps1
    py -3.12 -m venv .venv
    .\.venv\Scripts\Activate.ps1
    pip install pillow numpy pytest
@@ -373,7 +373,7 @@ script de verificación tools/check_env.py que confirme que todo está instalado
 - Versiones del toolchain incompatibles → usar exactamente la versión que recomienda PSn00bSDK.
 - Emulador sin BIOS → DuckStation y PCSX-Redux necesitan una BIOS de PS1 (extraída de tu propia consola) o, en el caso de PCSX-Redux, pueden usar su BIOS libre (OpenBIOS) para pruebas.
 - "Comando no reconocido" después de instalar algo → casi siempre es el `PATH`: cerrar la terminal, abrir otra, y si sigue, reiniciar.
-- Windows Defender marca como sospechoso un `.exe` de PS1 recién compilado o una herramienta descargada → revisar que la exclusión de `C:\dev` y `C:\PSn00bSDK` esté puesta; descargar herramientas solo de sus repositorios oficiales.
+- Windows Defender marca como sospechoso un `.exe` de PS1 recién compilado o una herramienta descargada → revisar que la exclusión de `E:\dev` y `C:\PSn00bSDK` esté puesta; descargar herramientas solo de sus repositorios oficiales.
 - Alguna herramienta no funciona en Windows → plan B: instalar **WSL2 con Ubuntu** (`wsl --install`) y usar esa herramienta desde ahí sobre la misma carpeta (`/mnt/c/dev/snoot-ps1`). El resto del proyecto sigue en Windows.
 
 ---
@@ -1012,7 +1012,7 @@ la PS1 solo ejecuta.
 - Simulador: `python -m tools.simulator build/data/SCRIPT/`
 
 ## Entorno
-- PC con Windows 11 (64 bits), proyecto en C:\dev\snoot-ps1
+- PC con Windows 11 (64 bits), proyecto en E:\dev\snoot-ps1
 - Python 3.12 (venv en .venv), Git, CMake, Ninja, ffmpeg, Graphviz
 - PSn00bSDK en C:\PSn00bSDK (incluye mipsel-none-elf-gcc y mkpsxiso), psxavenc
 - Emuladores: DuckStation (jugar, filtro CRT), PCSX-Redux (depurar), no$psx (opcional)

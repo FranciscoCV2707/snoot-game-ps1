@@ -36,7 +36,7 @@ https://git.cavemanon.xyz/Cavemanon/SnootGame. `original/` está en `.gitignore`
 - **mkpsxiso y rutas absolutas:** en la plantilla de PSn00bSDK, `${PROJECT_SOURCE_DIR}/system.cnf`
   se expande a `C:/...` y mkpsxiso 2.10 lo concatena mal (`build/C:/...`). Solución: en el XML
   usar rutas relativas al directorio de build (copiar los archivos allí). Aplicar lo mismo en `build.py`.
-- Prueba "hola mundo": `C:\dev\hello-ps1\build\template.cue` (generado desde la plantilla, 1056 sectores).
-- Exclusión de Windows Defender para `C:\dev`: hecha.
+- Prueba "hola mundo": `E:\dev\hello-ps1\build\template.cue` (generado desde la plantilla, 1056 sectores).
+- Exclusión de Windows Defender para `E:\dev`: hecha.
 - `template.cue` verificado en DuckStation y PCSX-Redux. En PCSX-Redux hay que usar una BIOS real
   (SCPH1001); con OpenBIOS mostró un cubo 3D propio en vez del disco.
