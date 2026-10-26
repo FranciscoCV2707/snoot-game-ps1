@@ -17,7 +17,7 @@ Fecha de preparación: 2026-10-08. Sistema: Windows 10 IoT Enterprise LTSC 2021.
 | mkpsxiso | 2.10 | mismo `bin` de PSn00bSDK |
 | psxavenc | incluido en PSn00bSDK | mismo `bin` |
 
-## Emuladores (en `C:\Users\Pako\Desktop\snoot`)
+## Emuladores (en `E:\snoot`)
 - DuckStation: `duckstation-windows-x64-release\duckstation-qt-x64-ReleaseLTCG.exe`
 - PCSX-Redux: `pcsx-redux-nightly-26946.20261008.32-x64\pcsx-redux.exe` (trae OpenBIOS)
 - BIOS: `ps1 bios\` (SCPH1001 NTSC-U, scph5500 NTSC-J, scph5501 NTSC-U, scph5502 PAL)
@@ -28,7 +28,7 @@ Fecha de preparación: 2026-10-08. Sistema: Windows 10 IoT Enterprise LTSC 2021.
 - Rutas largas de Windows activadas; `git config --global core.longpaths true` y `core.autocrlf false`.
 
 ## Juego original
-Copiado a `original/` desde `C:\Users\Pako\Desktop\snoot\snootgame` (sin carpeta `.git`,
+Copiado a `original/` desde `E:\snoot\snootgame` (sin carpeta `.git`,
 por lo que no hay commit de referencia). Repositorio oficial:
 https://git.cavemanon.xyz/Cavemanon/SnootGame. `original/` está en `.gitignore`.
 

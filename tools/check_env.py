@@ -7,7 +7,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PSN00BSDK_BIN = Path(r"C:\msys64\usr\local\psn00bsdk\bin")
-EMULATOR_ROOT = Path(r"C:\Users\Pako\Desktop\snoot")
+EMULATOR_ROOT = Path(r"E:\snoot")
 
 
 def find_tool(name):
