@@ -374,7 +374,7 @@ script de verificación tools/check_env.py que confirme que todo está instalado
 - Emulador sin BIOS → DuckStation y PCSX-Redux necesitan una BIOS de PS1 (extraída de tu propia consola) o, en el caso de PCSX-Redux, pueden usar su BIOS libre (OpenBIOS) para pruebas.
 - "Comando no reconocido" después de instalar algo → casi siempre es el `PATH`: cerrar la terminal, abrir otra, y si sigue, reiniciar.
 - Windows Defender marca como sospechoso un `.exe` de PS1 recién compilado o una herramienta descargada → revisar que la exclusión de `E:\dev` y `C:\PSn00bSDK` esté puesta; descargar herramientas solo de sus repositorios oficiales.
-- Alguna herramienta no funciona en Windows → plan B: instalar **WSL2 con Ubuntu** (`wsl --install`) y usar esa herramienta desde ahí sobre la misma carpeta (`/mnt/c/dev/snoot-ps1`). El resto del proyecto sigue en Windows.
+- Alguna herramienta no funciona en Windows → plan B: instalar **WSL2 con Ubuntu** (`wsl --install`) y usar esa herramienta desde ahí sobre la misma carpeta (`/mnt/e/dev/snoot-ps1`). El resto del proyecto sigue en Windows.
 
 ---
 
