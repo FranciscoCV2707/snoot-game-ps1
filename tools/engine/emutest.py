@@ -21,7 +21,7 @@ import numpy as np
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
-DESKTOP = Path.home() / "Desktop" / "snoot"
+DESKTOP = Path(r"E:\snoot")
 REDUX = DESKTOP / "pcsx-redux-nightly-26946.20261008.32-x64" / "pcsx-redux.exe"
 BIOS = DESKTOP / "ps1 bios" / "SCPH1001.BIN"
 CUE = ROOT / "build" / "engine" / "snoot_game.cue"
