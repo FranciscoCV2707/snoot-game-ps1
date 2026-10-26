@@ -60,7 +60,7 @@ la PS1 solo ejecuta.
 - Python 3.12 (venv en .venv; el Python 3.14 del sistema NO se usa), Git, CMake, Ninja, ffmpeg, Graphviz
 - PSn00bSDK instalado vía MSYS2 en C:\msys64\usr\local\psn00bsdk (bin\ contiene
   mipsel-none-elf-gcc, mkpsxiso y psxavenc). Variable PSN00BSDK_LIBS ya definida.
-- Emuladores en C:\Users\Pako\Desktop\snoot: duckstation-windows-x64-release (jugar),
+- Emuladores en E:\snoot: duckstation-windows-x64-release (jugar),
   pcsx-redux-nightly-... (depurar, trae OpenBIOS). BIOS reales en "ps1 bios" (SCPH1001, 5500, 5501, 5502).
 - Juego original copiado en original/ (sin .git; versión de origen: ver docs/entorno.md)
 - Plan B para herramientas que fallen en Windows: WSL2 (Ubuntu)
