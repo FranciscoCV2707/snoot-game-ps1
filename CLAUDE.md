@@ -56,7 +56,7 @@ la PS1 solo ejecuta.
 - Simulador: `python -m tools.simulator build/data/SCRIPT/`
 
 ## Entorno
-- PC con Windows 10 (64 bits), proyecto en C:\dev\snoot-ps1 (ruta corta, sin OneDrive)
+- PC con Windows 10 (64 bits), proyecto en E:\dev\snoot-ps1 (ruta corta, sin OneDrive)
 - Python 3.12 (venv en .venv; el Python 3.14 del sistema NO se usa), Git, CMake, Ninja, ffmpeg, Graphviz
 - PSn00bSDK instalado vía MSYS2 en C:\msys64\usr\local\psn00bsdk (bin\ contiene
   mipsel-none-elf-gcc, mkpsxiso y psxavenc). Variable PSN00BSDK_LIBS ya definida.

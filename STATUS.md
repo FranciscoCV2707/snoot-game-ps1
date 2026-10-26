@@ -8,11 +8,11 @@ Ultima actualizacion: 2026-10-10
 ### Fase 0 - Entorno (terminada)
 - [x] Python 3.12, Graphviz, git, cmake, ninja, ffmpeg instalados
 - [x] PSn00bSDK, mkpsxiso, psxavenc funcionando
-- [x] Repositorio C:\dev\snoot-ps1 con estructura, CLAUDE.md, PLAN.md, .gitattributes, .gitignore
+- [x] Repositorio E:\dev\snoot-ps1 con estructura, CLAUDE.md, PLAN.md, .gitattributes, .gitignore
 - [x] venv Python 3.12 con pillow, numpy, pytest, lz4
 - [x] tools/check_env.py: 17 verificaciones en OK
 - [x] Juego copiado a original/
-- [x] Exclusion de Defender para C:\dev
+- [x] Exclusion de Defender para E:\dev
 - [x] Hola mundo PS1 verificado en DuckStation y PCSX-Redux (BIOS real)
 
 ### Fase 1 - Auditoria (terminada)
@@ -92,7 +92,7 @@ Ultima actualizacion: 2026-10-10
 - [x] Tu segunda prueba: insultos del concierto legibles y dentro de la pantalla; teclado en pantalla en 13D (`renpy.input`)
 - [x] Congelones: precarga en segundo plano (imagenes, ambientes y efectos), revision de lo que viene en cada linea y motor en Release (-O2). Historia completa: de 316 congelones (peor 4.25 s, 156 s en total) a 131 (peor 1.05 s, 37 s); los que quedan son casi todos al empezar un capitulo
 - [x] Version 1.0: sin barras ni indicadores de arranque, solo los creditos (dist/SnootGamePS1-v1.0.zip)
-- [ ] PS2 con POPStarter (.VCD): no funciona, ni siquiera el disco sin memory card (`--nocard`), asi que la causa no es (solo) la memory card. Descartado por ahora: el usuario lo probara en una PS1 real con CD-R y se pasa al port nativo (C:\Dev\snoot-ps2)
+- [ ] PS2 con POPStarter (.VCD): no funciona, ni siquiera el disco sin memory card (`--nocard`), asi que la causa no es (solo) la memory card. Descartado por ahora: el usuario lo probara en una PS1 real con CD-R y se pasa al port nativo (E:\Dev\snoot-ps2)
 - Conocido: en las escenas con 9 personajes (Trigga III, Naomi I) 9 transiciones se hacen como corte por falta de VRAM
 - Conocido: Fang en el acuario de 12D, videollamada de 13C y dimmer del 40% (se usa 50%) no son identicos a Ren'Py
 - Nota: RAM usada ~1.6 MB de 2 MB
