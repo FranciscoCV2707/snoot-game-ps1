@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-DESKTOP = Path.home() / "Desktop" / "snoot"
+DESKTOP = Path(r"E:\snoot")
 ROUTE_STARTS = "chapter_11A,chapter_11B,chapter_11C,chapter_11D"
 
 RUNS = {"base": {"SNOOT_AUDIT_UNTIL": ROUTE_STARTS}}
