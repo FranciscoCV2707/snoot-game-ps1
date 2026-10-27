@@ -112,9 +112,9 @@ class Project:
     def audio_path(self, name):
         return self.audio_files.get(re.sub(r"/+", "/", name).lower())
 
-    def add_speaker(self, name):
+    def add_speaker(self, name, translated=None):
         self.speakers[name] = len(self.speaker_info)
-        self.speaker_info.append({"var": name, "name": self.tr.string(name) or name, "color": "#ffffff"})
+        self.speaker_info.append({"var": name, "name": translated or self.tr.string(name) or name, "color": "#ffffff"})
 
     def lowering_order(self):
         """Capitulos en el orden de la historia (base, rutas, extras), con el punto de reinicio del estado visual."""

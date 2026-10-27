@@ -505,11 +505,12 @@ class Lowerer:
     # -- dialogo --------------------------------------------------------------
     def n_Say(self, n, state):
         who = n.who
+        tid = n.text_id or self.p.tr.lookup(self.label, n.text)
         if who is not None and who not in self.p.speakers:
             if re.fullmatch(r"\w+", who):
                 raise CompileError(f"{n.file}:{n.line}: hablante desconocido {who}")
-            self.p.add_speaker(who)   # nombre escrito como texto ("Trevor & Tana")
-        tid = n.text_id or self.p.tr.lookup(self.label, n.text)
+            # nombre escrito como texto ("Trevor & Tana"): la traduccion lo trae en la linea ("Trevor y Tana")
+            self.p.add_speaker(who, self.p.tr.speaker(tid) if tid else None)
         es = self.p.tr.dialogue(tid) if tid else None
         if es is None:
             if n.text.strip() == "":
