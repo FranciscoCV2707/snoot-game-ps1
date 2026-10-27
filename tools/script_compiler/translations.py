@@ -62,6 +62,9 @@ class Translations:
                     m = SAY_RE.match(strip_comment(s))
                     if m:
                         current["text"].append(unquote(m.group(3)))
+                        # hablante escrito como texto ("Trevor y Tana" "..."): su nombre se traduce en la linea
+                        if m.group(2) and m.group(2)[0] in "\"'":
+                            current["who"] = unquote(m.group(2))
 
     def build_index(self):
         """Indice (etiqueta, texto original) -> ids en el orden de tl, para dialogos sin `id` explicito."""
@@ -101,6 +104,10 @@ class Translations:
         if not entry or not entry["text"]:
             return None
         return "".join(entry["text"]) if len(entry["text"]) > 1 else entry["text"][0]
+
+    def speaker(self, text_id):
+        """Nombre en espanol de un hablante escrito como texto, tal como lo trae la linea traducida; None si no hay."""
+        return self.by_id.get(text_id, {}).get("who")
 
     def string(self, original):
         return self.strings.get(original)
