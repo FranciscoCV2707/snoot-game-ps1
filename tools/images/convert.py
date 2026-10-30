@@ -20,7 +20,7 @@ import lz4.block
 import numpy as np
 from PIL import Image
 
-from tools.images import render
+from tools.images import profile, render
 from tools.images.proto_compare import PSX_DITHER, crt_preview, dither_offsets
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -28,14 +28,17 @@ DATA = ROOT / "build" / "data"
 OUT = DATA / "IMG"
 TMP = ROOT / "build" / "tmp" / "img"
 REPORT_DIR = ROOT / "build" / "reports" / "arte"
-SCALE = 6                    # 1920 / 320
+# Perfil de la consola a la que se le mandan los recursos (docs/perfiles.md de renpy-console-project). Sin variable,
+# PS1: los numeros historicos de abajo, que son los que producen el disco de v1.0.
+PROFILE = profile.get(os.environ.get("VN_PROFILE"))
+SCALE = int(PROFILE.scale) if float(PROFILE.scale).is_integer() else 6   # 1920 / ancho de la vista
 TEXT_IMAGES = {f"text{i}" for i in range(1, 10)}                 # textos de insultos (capitulo 1): legibles al doble de tamano
 NO_DITHER = TEXT_IMAGES | {"vvurm_drama_poster", "jewlcase", "fastforward"}   # imagenes con texto: sin tramado
 SCALE_OVERRIDE = {"ui logo": 3, **{name: 3 for name in TEXT_IMAGES}}   # el logo del titulo se dibuja mas grande (pantalla completa de 320x240)
-TEXT_MAX_W = 300             # los insultos salen en xalign 0.2-0.8: tienen que caber en la pantalla
-HALF_AREA = 90000           # sprites de mas de ~90000 pixeles se guardan a media resolucion
-MAX_SPRITE_ROWS = 256       # una imagen no puede cruzar la fila 256 de VRAM: los mas altos van a media resolucion
-DITHER_STRENGTH = 2
+TEXT_MAX_W = PROFILE.text_max_w      # los insultos salen en xalign 0.2-0.8: tienen que caber en la pantalla
+HALF_AREA = PROFILE.half_area       # sprites de mas de ~90000 pixeles se guardan a media resolucion
+MAX_SPRITE_ROWS = PROFILE.max_sprite_rows       # una imagen no puede cruzar la fila 256 de VRAM: los mas altos van a media resolucion
+DITHER_STRENGTH = PROFILE.dither_strength
 KIND_BG, KIND_SPRITE, KIND_SOLID, KIND_EMPTY = 0, 1, 2, 3
 KIND_NAMES = {0: "fondo", 1: "sprite", 2: "color", 3: "vacio"}
 FMT_VERSION = 1
