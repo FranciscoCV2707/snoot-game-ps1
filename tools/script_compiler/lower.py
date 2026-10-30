@@ -4,20 +4,25 @@ Recorre cada capitulo siguiendo el flujo (etiquetas, menus, if) y lleva la cuent
 tag, para resolver atributos como lo hace Ren'Py (`show anon happy` conserva el volteo anterior).
 """
 import ast
+import os
 import re
 from dataclasses import dataclass, field
 
+from tools.images import profile
 from tools.script_compiler import atl as atl_module
 from tools.script_compiler import rpy_parser as rp
 from tools.script_compiler import textfmt
 from tools.script_compiler.opcodes import FLAG_FLIP, OP_CODE, POS_KEEP, POS_NONE, Z_KEEP
+
+# Perfil de la consola a la que se hornea el guion (docs/perfiles.md en renpy-console-project). Sin variable = PS1.
+PROFILE = profile.get(os.environ.get("VN_PROFILE"))
 
 MUSIC_CHANNELS = {"music": 0, "music1": 0, "music2": 0}
 AMBIENT_SLOTS = {"ambient": 0, "ambient1": 1, "ambient2": 2, "ambient3": 3}
 SFX_CHANNELS = {"sound", "audio"}
 VOLUME_CHANNELS = {"music": 0, "ambient": 1, "ambient1": 2, "ambient2": 3, "ambient3": 4, "sound": 5, "audio": 5}
 SPECIAL_TEXTSCROLL, SPECIAL_CREDITS, SPECIAL_INPUT = 1, 2, 3
-TEXTSCROLL_SCALE = 0.4      # tamano del chat en la PS1 respecto al original (legible en 320 px)
+TEXTSCROLL_SCALE = PROFILE.textscroll_scale   # tamano del chat respecto al original (0,4 en PS1: legible en 320 px)
 SHOW_RANDOM_FIRST = ("text1",)
 SCENE_FLIP = 0x8000            # bit alto del anim de SCENE: fondo espejado (`scene moes pizza mirrored`)
 TEXTBOX_INSTANT = 4            # bit del modo de TEXTBOX: mostrar u ocultar la caja sin fundido
@@ -119,7 +124,7 @@ class Registry:
         from tools.images.render import find_file
         with Image.open(find_file("images/other/texts.webp")) as im:
             width, height = im.size
-        rows = int(180 / TEXTSCROLL_SCALE)                       # filas del original por tira de 180 lineas de PS1
+        rows = int(PROFILE.view[1] / TEXTSCROLL_SCALE)            # filas del original por tira del alto de la vista
         zoom = atl_module.SCREEN_W / width                        # al tamano de 1920 que el convertidor reduce 6x
         ids = []
         for k in range((height + rows - 1) // rows):
