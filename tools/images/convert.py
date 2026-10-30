@@ -144,6 +144,13 @@ def phase1_run(task):
         scale = max(scale, ow / TEXT_MAX_W)
     w, h = max(1, round(ow / scale)), max(1, round(oh / scale))
     kind = KIND_BG if (opaque and ow >= 1000 and not has_videoframe(recipe)) else KIND_SPRITE
+    if kind == KIND_BG and 0 < PROFILE.view[1] - h <= 8 and w == PROFILE.view[0]:
+        # Un fondo que ocupa el cuadro fuente entero debe ocupar la vista entera de la consola. Reducir solo por el
+        # ancho dejaba 480x270 dentro de una vista de 480x272: dos lineas sin pintar en la LCD real de la PSP (y
+        # cuatro en la Vita). Solo se estira lo que QUDA CORTO y por poco (<=8 px, 0,7%): el disco de PS1 tiene 17
+        # fondos de 320x181 que ya rebosan su vista de 180 y siguen igual, y la vista de PS1 (320x180) es 16:9
+        # exacto, asi que la regla no toca ni un byte de v1.0.
+        h = PROFILE.view[1]
     if kind == KIND_BG:
         flat = Image.new("RGBA", img.size, (0, 0, 0, 255))
         flat.alpha_composite(img)

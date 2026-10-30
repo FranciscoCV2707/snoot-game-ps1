@@ -258,6 +258,8 @@ def main():
     ap.add_argument("--start", default="story", help="story (la historia completa, capitulo tras capitulo) o una etiqueta")
     ap.add_argument("--autotest", type=Path, help="AUTOTEST.BIN de una prueba automatica (tools/engine/emutest.py)")
     ap.add_argument("--nocard", action="store_true", help="disco que no usa la memory card (prueba en PS2/POPStarter)")
+    ap.add_argument("--data", type=Path, help="deja solo los archivos del disco en esta carpeta (backends sin ISO: "
+                                             "PC/PSP/Vita leen por nombre) y no arma el ISO")
     args = ap.parse_args()
 
     program = Program(DATA)
@@ -312,6 +314,24 @@ def main():
         names.append(f'\t\t\t<file name="{name}" type="data" source="{name}" />')
     (WORK / "system.cnf").write_text("BOOT=cdrom:\\SNOOT.EXE;1\nTCB=4\nEVENT=10\nSTACK=801FFFF0\n", encoding="utf-8")
     (WORK / "iso.xml").write_text(XML.format(files="\n".join(names)), encoding="utf-8")
+
+    if args.data:
+        # Mismo ensamblado que el disco de PS1 (los capitulos se renumeran igual: el capitulo STORY del arbol es el
+        # C{idx:02d} que pide el motor), pero sin SDK ni ISO: sirve para los backends que leen un folder.
+        args.data.mkdir(parents=True, exist_ok=True)
+        for old in args.data.glob("*"):
+            if old.is_file():
+                old.unlink()
+        for f in WORK.iterdir():
+            if f.is_file() and f.suffix.upper() in (".IMG", ".VNB", ".TXT", ".BIN", ".SPU"):
+                shutil.copy2(f, args.data / f.name)
+        # MUSIC.XA va suelto en el ISO (iso.xml lo toma de ../data), asi que en WORK no esta: los backend de folder
+        # lo leen por nombre, igual que el disco de PS1.
+        if (DATA / "MUSIC.XA").exists():
+            shutil.copy2(DATA / "MUSIC.XA", args.data / "MUSIC.XA")
+        print(f"disco de datos: {args.data} ({len(list(args.data.iterdir()))} archivos), "
+              f"capitulos {len(chapters)}, {len(images)} imagenes, inicio {args.start}")
+        return 0
 
     env = dict(os.environ, PATH=str(SDK_BIN) + os.pathsep + os.environ["PATH"])
     if subprocess.run(["cmake", "--preset", "default", "."], cwd=ENGINE, env=env, capture_output=True).returncode != 0:
