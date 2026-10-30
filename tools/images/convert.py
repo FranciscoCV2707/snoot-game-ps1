@@ -44,6 +44,25 @@ KIND_NAMES = {0: "fondo", 1: "sprite", 2: "color", 3: "vacio"}
 FMT_VERSION = 1
 HEADER = "<4sBBHHHHHH4BH"
 FLAG_TRANSLUCENT = 4         # bit2 de flags: se dibuja con la mezcla al 50% de la GPU (CLUT con bit STP)
+# Bits 3-4 de flags: como se guardan los pixeles cuando el perfil no usa paleta de 256 (docs/formato-img.md).
+FLAG_FMT_SHIFT, FLAG_FMT_MASK = 3, 3
+FMT_PALETTE, FMT_RGB565, FMT_RGBA4444, FMT_RGBA8888 = 0, 1, 2, 3
+DEPTH_FLAG = {"psx256": FMT_PALETTE, "rgb565": FMT_RGB565, "rgba4444": FMT_RGBA4444, "rgba8888": FMT_RGBA8888}
+
+
+def true_pixels(rgb_arr, alpha_arr, depth):
+    """Bytes del bitmap en el formato de color verdadero del perfil, con su tamano sin comprimir."""
+    if depth == "rgb565":
+        r = rgb_arr[..., 0].astype(np.uint16) >> 3
+        g = rgb_arr[..., 1].astype(np.uint16) >> 2
+        b = rgb_arr[..., 2].astype(np.uint16) >> 3
+        return ((r << 11) | (g << 5) | b).astype("<u2").tobytes()
+    if depth == "rgba4444":
+        rgba = np.dstack([rgb_arr, alpha_arr[..., None]])
+        return ((rgba[..., 0].astype(np.uint16) >> 4 << 12) | (rgba[..., 1].astype(np.uint16) >> 4 << 8)
+                | (rgba[..., 2].astype(np.uint16) >> 4 << 4) | (rgba[..., 3].astype(np.uint16) >> 4)).astype("<u2").tobytes()
+    rgba = np.dstack([rgb_arr, alpha_arr[..., None]]).astype(np.uint8)
+    return rgba.tobytes()      # bytes R,G,B,A = SDL_PIXELFORMAT_RGBA32 en cualquier extremo
 
 
 def uniform_translucent(alpha):
@@ -114,7 +133,8 @@ def phase1_run(task):
     meta = {"id": iid}
     half = False
     if recipe["op"] == "solid":
-        meta.update(kind=KIND_SOLID, color=render.parse_color(recipe["color"]), full_w=320, full_h=180)
+        meta.update(kind=KIND_SOLID, color=render.parse_color(recipe["color"]), full_w=PROFILE.solid_full[0],
+                    full_h=PROFILE.solid_full[1])
         return meta
     img = render.render(recipe)
     ow, oh = img.size
@@ -150,7 +170,7 @@ def phase1_run(task):
         crop = small.crop((x0, y0, x1, y1))
         body = sa[y0:y1, x0:x1]
         semi = float(((body > 24) & (body < 231)).sum()) / max(1, int((body > 24).sum()))
-        if crop.width * crop.height > HALF_AREA or crop.height > MAX_SPRITE_ROWS:
+        if not PROFILE.true_color and (crop.width * crop.height > HALF_AREA or crop.height > MAX_SPRITE_ROWS):
             half = True
             x0, y0 = (x0 + ox) // 2, (y0 + oy) // 2
             ox = oy = 0
@@ -193,6 +213,28 @@ def group_palettes(metas, only=None):
     return palettes
 
 
+def write_true_color(meta, out, rgb, alpha):
+    """Perfil en color verdadero: sin paleta (`ncolors = 0`) y con el alfa dentro del pixel.
+
+    El fondo va en 565 y el sprite en 4444 porque 565 no tiene alfa y los sprites la mitad del tiempo son
+    personajes recortados. En PSP eso es lo que hace caber la escena en sus 2 MB de VRAM sin volver a los 256 colores.
+    """
+    depth = PROFILE.bg_format if meta["kind"] == KIND_BG else PROFILE.depth
+    h, w = rgb.shape[0], rgb.shape[1]
+    if w % 2:                                     # el motor pide el ancho par, como con los indices
+        rgb, alpha = np.pad(rgb, ((0, 0), (0, 1), (0, 0))), np.pad(alpha, ((0, 0), (0, 1)))
+        w += 1
+    raw = true_pixels(rgb, alpha, depth)
+    comp = lz4.block.compress(raw, mode="high_compression", compression=12, store_size=False)
+    flags = DEPTH_FLAG[depth] << FLAG_FMT_SHIFT
+    blob = struct.pack(HEADER, b"IMG1", meta["kind"], flags, meta["full_w"], meta["full_h"], meta.get("x", 0),
+                       meta.get("y", 0), w, h, 0, 0, 0, 0, 0)
+    blob += struct.pack("<II", len(raw), len(comp)) + comp
+    out.write_bytes(blob)
+    Image.fromarray(np.dstack([rgb, alpha]).astype(np.uint8), "RGBA").save(REPORT_DIR / f"{meta['id']:04d}_c.png")
+    return {"id": meta["id"], "raw": len(raw), "comp": len(comp), "bytes": len(blob), "w": w, "h": h, "colors": 0}
+
+
 # ------------------------------------------------------------------ fase 3: cuantizar y escribir
 def palette_image(flat):
     img = Image.new("P", (1, 1))
@@ -219,6 +261,8 @@ def phase3(task):
         return {"id": iid, "raw": 0, "comp": 0, "bytes": len(blob)}
     arr = np.asarray(Image.open(meta["tmp"]))
     rgb, alpha = arr[..., :3], arr[..., 3]
+    if PROFILE.true_color:
+        return write_true_color(meta, out, rgb, alpha)
     if kind == KIND_BG:
         base = Image.fromarray(rgb, "RGB")
         pal = base.quantize(256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE)
