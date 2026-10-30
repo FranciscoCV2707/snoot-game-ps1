@@ -3,10 +3,12 @@
 Uso: python -m tools.script_compiler.compile
 """
 import json
+import os
 import struct
 import sys
 from pathlib import Path
 
+from tools.images import profile
 from tools.script_compiler import assemble
 from tools.script_compiler.atl import build_anim_table
 from tools.script_compiler.lower import CompileError, Inst, Lowerer, Registry
@@ -15,6 +17,8 @@ from tools.script_compiler.project import GAME, Project
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "build" / "data"
+# Consola para la que se hornea el guion (docs/perfiles.md en renpy-console-project). Sin variable = PS1 (D6).
+PROFILE = profile.get(os.environ.get("VN_PROFILE"))
 
 
 class Result:
@@ -155,16 +159,16 @@ def story_insts(project, registry):
 
 
 FONT_PATH = GAME / "gui" / "fonts" / "NotoSansJP-Regular.ttf"
-TEXT_WIDTH = 304       # pixeles utiles de la caja (D6)
+TEXT_WIDTH = PROFILE.text_width    # pixeles utiles de la caja (D6: 304 en PS1)
 TEXT_LINES = 3
-CHOICE_WIDTH = 296
+CHOICE_WIDTH = PROFILE.choice_width
 CHOICE_LINES = 3
 
 
 def paginate_strings(result):
     """Parte cada cadena en lineas y paginas segun D6. Devuelve estadisticas."""
     from tools.script_compiler import textfmt
-    measure = textfmt.make_measure(FONT_PATH, 13)
+    measure = textfmt.make_measure(FONT_PATH, PROFILE.text_size)
     stats = {"strings": 0, "multipage": 0, "pages": 0, "choice_overflow": 0}
     for ir in result.irs.values():
         for s in ir.strings:

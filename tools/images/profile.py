@@ -48,6 +48,25 @@ class Profile:
         """Un fondo es opaco: en 16 bits no necesita alfa, y ahi esta el ahorro que hace que quepa en VRAM."""
         return self.depth_bg or self.depth
 
+    # -- texto (D6): los numeros de PS1 son 304 px utiles de caja, 296 de opcion y cuerpo 13 sobre una vista de 320.
+    # El numero de lineas no cambia con el perfil: la caja guarda su proporcion de pantalla (30 % del alto en el
+    # motor), asi que al escalar el ancho y el cuerpo a la vez entran las mismas 3.
+    @property
+    def text_scale(self) -> float:
+        return self.view[0] / 320.0
+
+    @property
+    def text_width(self) -> int:
+        return round(304 * self.text_scale)
+
+    @property
+    def choice_width(self) -> int:
+        return round(296 * self.text_scale)
+
+    @property
+    def text_size(self) -> int:
+        return max(8, round(13 * self.text_scale))
+
 
 def _profile(name: str, view: tuple[int, int], screen: tuple[int, int], **kw) -> Profile:
     base = dict(scale=1920 / view[0], solid_full=view, text_max_w=int(view[0] * 0.94),
