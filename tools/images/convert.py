@@ -399,8 +399,10 @@ def main():
                             "x": m.get("x", 0), "y": m.get("y", 0), "names": meta_json["images"][r["id"]]["names"][:2]}
     (DATA / "images_out.json").write_text(json.dumps(summary, indent=1, ensure_ascii=False), encoding="utf-8")
     write_index(meta_json, summary)
-    make_memcard_icon(meta_json, summary)
-    write_video_preview(meta_json, table)
+    if not PROFILE.true_color:
+        # MCICON.BIN y el GIF del video son cosas de la BIOS y la VRAM de PS1: en perfiles nativos no aplican.
+        make_memcard_icon(meta_json, summary)
+        write_video_preview(meta_json, table)
     write_report(meta_json, summary, palettes)
     return 0
 
@@ -425,14 +427,36 @@ def make_memcard_icon(meta_json, summary):
     (DATA / "MCICON.BIN").write_bytes(struct.pack("<16H", *words) + bytes(packed))
 
 
+def from_true(px, depth):
+    """Pixeles de un perfil en color verdadero a RGB, para las herramientas que leen los IMG generados."""
+    if depth == "rgba8888":
+        return px[..., :3]
+    v = px[..., 0].astype(np.uint16) | (px[..., 1].astype(np.uint16) << 8)
+    if depth == "rgba4444":
+        r, g, b = (v >> 12) & 15, (v >> 8) & 15, (v >> 4) & 15
+        return (np.dstack([r, g, b]).astype(np.uint16) * 17).astype(np.uint8)
+    r, g, b = (v >> 11) & 31, (v >> 5) & 63, v & 31
+    return np.dstack([(r * 255) // 31, (g * 255) // 63, (b * 255) // 31]).astype(np.uint8)
+
+
 def load_img(path):
-    """Lee un archivo IMG1: devuelve (rgb, mascara, x, y) del bitmap, o None si esta vacio."""
+    """Lee un archivo IMG1: devuelve (rgb, mascara, x, y) del bitmap, o None si esta vacio.
+
+    Con perfil en color verdadero no hay paleta: `ncolors` vale 0, el bloque de 512 bytes desaparece y el alfa viaja
+    dentro del pixel, asi que la mascara (que en PS1 sale del indice 0 transparente) queda en None.
+    """
     data = Path(path).read_bytes()
     size = struct.calcsize(HEADER)
     header = struct.unpack_from(HEADER, data, 0)
     kind, flags, x, y, w, h = header[1], header[2], header[5], header[6], header[7], header[8]
     if kind not in (KIND_BG, KIND_SPRITE) or not w:
         return None
+    fmt = (flags >> FLAG_FMT_SHIFT) & FLAG_FMT_MASK
+    if fmt:
+        depth = {FMT_RGB565: "rgb565", FMT_RGBA4444: "rgba4444", FMT_RGBA8888: "rgba8888"}[fmt]
+        bpp = 4 if depth == "rgba8888" else 2
+        px = np.frombuffer(lz4.block.decompress(data[size + 8:], uncompressed_size=w * h * bpp), np.uint8).reshape(h, w, bpp)
+        return from_true(px, depth), None, x, y
     words = struct.unpack_from("<256H", data, size)
     raw_size = struct.unpack_from("<II", data, size + 512)[0]
     idx = np.frombuffer(lz4.block.decompress(data[size + 520:], uncompressed_size=raw_size), np.uint8).reshape(h, w)
