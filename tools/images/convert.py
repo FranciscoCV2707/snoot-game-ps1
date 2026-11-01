@@ -104,7 +104,11 @@ def dither_field(shape, origin=(0, 0)):
 
 
 def noisy(arr, origin=(0, 0)):
-    return np.clip(arr.astype(np.int16) + dither_field(arr.shape, origin) * DITHER_STRENGTH, 0, 255).astype(np.uint8)
+    """Tramado ordenado de la PS1 sobre (h, w, 3) o sobre un canal suelto (h, w)."""
+    field = dither_field(arr.shape, origin)
+    if arr.ndim == 2:
+        field = field[..., 0]
+    return np.clip(arr.astype(np.int16) + field * DITHER_STRENGTH, 0, 255).astype(np.uint8)
 
 
 def has_videoframe(recipe):
@@ -235,7 +239,15 @@ def write_true_color(meta, out, rgb, alpha):
         # Tramado ordenado al reducir a 16 bits. Sin esto el degradado queda en bandas duras: medido en la panoramica
         # del colegio (I0004), la columna del cielo da 30 niveles en 133 tramos con saltos de 8, mientras PS1 con los
         # mismos 5 bits pero con tramado da 28 niveles en 319 tramos de 4. Vita (rgba8888) no lo necesita: salto 1.
-        rgb = noisy(rgb, (meta.get("x", 0), meta.get("y", 0)))
+        origin = (meta.get("x", 0), meta.get("y", 0))
+        rgb = noisy(rgb, origin)
+        if depth == "rgba4444":
+            # El alfa de 4444 tiene el MISMO paso que el color (17 de 255), asi que un borde suave tambien sale en
+            # anillos. Medido en la vineta `iris` de la llegada al colegio (I0005 del disco de PSP), una linea del
+            # degradado da 15 niveles en 19 tramos con la banda mas ancha 316 px; tramando el alfa, 383 tramos y
+            # banda de 51. PS1 no pasa por aqui: en la rama de sprites con paleta su alfa ya se convierte en tramado
+            # ("efectos translucidos (vineta, brillos)"), y Vita guarda el alfa en 8 bits.
+            alpha = noisy(alpha, origin)
     raw = true_pixels(rgb, alpha, depth)
     comp = lz4.block.compress(raw, mode="high_compression", compression=12, store_size=False)
     flags = DEPTH_FLAG[depth] << FLAG_FMT_SHIFT
