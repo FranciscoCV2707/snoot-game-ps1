@@ -16,6 +16,24 @@ Reportes: `build/reports/imagenes.md` (numeros) y `build/reports/arte/*.html` (h
 6. **Imagenes enormes** (mas de ~90,000 pixeles): se guardan a media resolucion (flag bit1) y el motor las dibuja al doble.
 7. **Comprime con LZ4** (D9).
 
+## Con perfil de otra consola (D29)
+
+Los pasos no cambian de idea, cambian de numero. Lo que manda cada perfil esta en `tools/images/profile.py`:
+
+- **Paso 2** reduce a `1920 / ancho_de_la_vista` (4 en PSP, 2 en Vita), no a 1/6.
+- **Paso 4**: en los perfiles de color verdadero no hay paleta. El fondo va en `rgb565` y el sprite en `rgba4444`
+  (565 no tiene alfa y la mitad de los sprites son personajes recortados); Vita va en `rgba8888`. Con `ncolors = 0`
+  no se escriben los 512 bytes de paleta y los dos `u32` de tamanos empiezan en el offset `0x18`.
+- **Paso 5**: el **alfa se trata igual que el color**. En `rgba4444` el alfa ocupa 4 bits, con el mismo paso (17 de
+  255) que el color, asi que recibe el mismo tramado ordenado de la matriz de la PS1. Sin eso, la vineta `iris` y los
+  velos salen en anillos concentricos: medido en una linea del degradado del `I0005` del disco de PSP, **15 niveles en
+  19 tramos con la banda mas ancha 303 px** sin tramar, y **386 tramos con banda de 55 px** tramando. En `rgb565` no
+  hay canal de alfa, y en `rgba8888` el paso es 1 y no hace falta ruido.
+- **Paso 6**: `half_area` vale 0 en los perfiles de color verdadero, o sea ninguno se guarda a media resolucion (la
+  reduccion del paso 2 ya hace ese trabajo).
+- El flag `bit2` ("translucido", el velo de alfa parejo que la GPU mezcla al 50%) es del camino de paleta: en color
+  verdadero el alfa viaja dentro del pixel y el motor no necesita esa mezcla.
+
 ## Formato `Innnn.IMG` (little-endian)
 ```
 0x00  "IMG1"
