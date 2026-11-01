@@ -87,7 +87,9 @@ PROFILES: dict[str, Profile] = {
                    extra={"sin_reduccion": True}),
     # PSP: 480x272 reales. Su GPU no pasa de 512 px de textura y tiene 2 MB de VRAM: por eso 16 bits (fondo 261 KB
     # en 565, sprite con alfa en 4444). Los 512 px los resuelve la ventana/teselado del motor (img_load_big).
-    "psp": _profile("psp", (480, 272), (480, 272), depth="rgba4444", depth_bg="rgb565"),
+    # Lleva tramado ordenado porque 5 bits de azul SIN tramado hacen bandas duras: medido en la panoramica del
+    # colegio, 30 niveles en 133 tramos de salto 8 contra los 319 tramos de salto 4 de PS1 con la misma profundidad.
+    "psp": _profile("psp", (480, 272), (480, 272), depth="rgba4444", depth_bg="rgb565", dither_strength=2),
     "ps2": _profile("ps2", (640, 448), (640, 448), depth="rgba8888"),
     "vita": _profile("vita", (960, 544), (960, 544), depth="rgba8888"),
     "3ds": _profile("3ds", (400, 240), (400, 240), depth="rgba4444", depth_bg="rgb565"),

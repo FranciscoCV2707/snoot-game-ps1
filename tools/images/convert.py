@@ -231,6 +231,11 @@ def write_true_color(meta, out, rgb, alpha):
     if w % 2:                                     # el motor pide el ancho par, como con los indices
         rgb, alpha = np.pad(rgb, ((0, 0), (0, 1), (0, 0))), np.pad(alpha, ((0, 0), (0, 1)))
         w += 1
+    if depth in ("rgb565", "rgba4444") and DITHER_STRENGTH:
+        # Tramado ordenado al reducir a 16 bits. Sin esto el degradado queda en bandas duras: medido en la panoramica
+        # del colegio (I0004), la columna del cielo da 30 niveles en 133 tramos con saltos de 8, mientras PS1 con los
+        # mismos 5 bits pero con tramado da 28 niveles en 319 tramos de 4. Vita (rgba8888) no lo necesita: salto 1.
+        rgb = noisy(rgb, (meta.get("x", 0), meta.get("y", 0)))
     raw = true_pixels(rgb, alpha, depth)
     comp = lz4.block.compress(raw, mode="high_compression", compression=12, store_size=False)
     flags = DEPTH_FLAG[depth] << FLAG_FMT_SHIFT
